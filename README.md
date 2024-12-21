@@ -134,6 +134,23 @@ Replace "path/to/stockscreen.py" with the full path to where you saved the stock
 }
 ```
 
+### News Screen Criteria
+```python
+{
+    "screen_type": "news",
+    "criteria": {
+        "keywords": List[str],           # Keywords to search for in news
+        "exclude_keywords": List[str],    # Keywords to exclude from results
+        "min_days": int,                 # Minimum days back to search
+        "max_days": int,                 # Maximum days back to search
+        "management_changes": bool,       # Filter for management changes
+        "require_all_keywords": bool,     # Require all keywords to match
+        "category": str                  # Optional: market cap category filter
+    },
+    "watchlist": str,                    # Optional: name of watchlist to screen
+    "save_result": str                   # Optional: name to save results
+}
+
 ### Custom Screen Criteria
 ```python
 {
