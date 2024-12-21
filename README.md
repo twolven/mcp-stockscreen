@@ -151,6 +151,8 @@ Replace "path/to/stockscreen.py" with the full path to where you saved the stock
     "save_result": str                   # Optional: name to save results
 }
 
+```
+
 ### Custom Screen Criteria
 ```python
 {
@@ -173,7 +175,7 @@ Replace "path/to/stockscreen.py" with the full path to where you saved the stock
 ```
 
 ### Category Values
-Available market cap categories for filtering:
+Ava1ilable market cap categories for filtering:
 - "mega_cap": >$200B
 - "large_cap": $10B-$200B
 - "mid_cap": $2B-$10B
