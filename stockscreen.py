@@ -217,6 +217,80 @@ class StockscreenJSONEncoder(json.JSONEncoder):
         except TypeError:
             return str(obj)
 
+async def get_news_data(symbol: str, days_back: int = 30) -> dict:
+    """
+    Get recent news data for a symbol
+    Returns dict with news items and key company events
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        news_data = {
+            "recent_news": [],
+            "key_events": [],
+            "management_changes": [],
+            "last_updated": datetime.datetime.now().isoformat()
+        }
+
+        # Get news from yfinance
+        try:
+            news = ticker.news
+            if news:
+                for item in news:
+                    if (datetime.datetime.fromtimestamp(item['providerPublishTime']) > 
+                        datetime.datetime.now() - datetime.timedelta(days=days_back)):
+                        news_item = {
+                            "title": item.get('title'),
+                            "publisher": item.get('publisher'),
+                            "published_at": datetime.datetime.fromtimestamp(item['providerPublishTime']).isoformat(),
+                            "type": item.get('type'),
+                            "summary": item.get('summary')
+                        }
+                        
+                        # Categorize news
+                        title_lower = news_item['title'].lower()
+                        if any(term in title_lower for term in ['ceo', 'chief', 'executive', 'president', 'chairman']):
+                            news_data['management_changes'].append(news_item)
+                        elif any(term in title_lower for term in ['lawsuit', 'investigation', 'sec', 'probe']):
+                            news_data['key_events'].append(news_item)
+                        else:
+                            news_data['recent_news'].append(news_item)
+
+        except Exception as e:
+            logger.warning(f"Error fetching news for {symbol}: {str(e)}")
+            
+        # Additional data enrichment
+        try:
+            info = ticker.info
+            if info:
+                # Get executive team info
+                if 'companyOfficers' in info:
+                    news_data['current_management'] = [{
+                        'name': officer.get('name'),
+                        'title': officer.get('title'),
+                        'since': officer.get('yearStarted')
+                    } for officer in info['companyOfficers']]
+                    
+                # Get company description and updates
+                news_data['company_info'] = {
+                    'description': info.get('longBusinessSummary'),
+                    'sector': info.get('sector'),
+                    'industry': info.get('industry'),
+                    'website': info.get('website'),
+                    'last_updated': datetime.datetime.now().isoformat()
+                }
+                
+        except Exception as e:
+            logger.warning(f"Error fetching additional info for {symbol}: {str(e)}")
+
+        return news_data
+        
+    except Exception as e:
+        logger.error(f"Error in get_news_data for {symbol}: {str(e)}")
+        return {
+            "error": str(e),
+            "last_updated": datetime.datetime.now().isoformat()
+        }
+
 def format_response(data: Any, error: Optional[str] = None) -> List[TextContent]:
     response = {
         "success": error is None,
@@ -330,14 +404,14 @@ async def list_tools():
     return [
         Tool(
             name="run_stock_screen",
-            description="Screen stocks based on technical and fundamental criteria",
+            description="Screen stocks based on technical, fundamental, options, and news criteria",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "screen_type": {
                         "type": "string",
-                        "description": "Type of screen to run (technical, fundamental, options, custom)",
-                        "enum": ["technical", "fundamental", "options", "custom"]
+                        "description": "Type of screen to run",
+                        "enum": ["technical", "fundamental", "options", "news", "custom"]
                     },
                     "criteria": {
                         "type": "object",
@@ -353,6 +427,25 @@ async def list_tools():
                     }
                 },
                 "required": ["screen_type", "criteria"]
+            }
+        ),
+        Tool(
+            name="get_stock_news",
+            description="Get recent news and updates for a stock",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Stock ticker symbol"
+                    },
+                    "days_back": {
+                        "type": "integer",
+                        "description": "Number of days of news to retrieve",
+                        "default": 30
+                    }
+                },
+                "required": ["symbol"]
             }
         ),
         Tool(
@@ -419,6 +512,8 @@ async def call_tool(name: str, arguments: dict):
                 result = await run_fundamental_screen(symbols, criteria)
             elif screen_type == "options":
                 result = await run_options_screen(symbols, criteria)
+            elif screen_type == "news":
+                result = await run_news_screen(symbols, criteria)
             elif screen_type == "custom":
                 result = await run_custom_screen(symbols, criteria)
             else:
@@ -429,6 +524,12 @@ async def call_tool(name: str, arguments: dict):
                 data_store.save_screening_result(save_result, result)
                 
             return format_response(result)
+            
+        elif name == "get_stock_news":
+            symbol = arguments['symbol']
+            days_back = arguments.get('days_back', 30)
+            news_data = await get_news_data(symbol, days_back)
+            return format_response(news_data)
             
         elif name == "manage_watchlist":
             action = arguments['action']
@@ -1052,31 +1153,145 @@ async def run_options_screen(symbols: Optional[List[str]], criteria: dict) -> di
         "timestamp": datetime.datetime.now().isoformat()
     }
 
-async def run_custom_screen(symbols: Optional[List[str]], criteria: dict) -> dict:
+async def run_news_screen(symbols: Optional[List[str]], criteria: dict) -> dict:
     """
-    Run custom combination screen that can mix technical, fundamental, and options criteria
+    Screen stocks based on news and events criteria
     
     Example criteria:
     {
-        "category": "large_cap",  # Optional market cap filter
+        "keywords": ["acquisition", "merger"],
+        "exclude_keywords": ["lawsuit", "investigation"],
+        "min_days": 1,
+        "max_days": 30,
+        "management_changes": true,
+        "require_all_keywords": false
+    }
+    """
+    if not symbols:
+        if 'symbols' in criteria:
+            symbols = [criteria['symbols']] if isinstance(criteria['symbols'], str) else criteria['symbols']
+        else:
+            # Get default symbols, optionally filtered by category
+            category = criteria.get('category')
+            symbols = await data_store.default_symbols.get_symbols(category)
+            
+    results = []
+    rejected = []
+    
+    for symbol in symbols:
+        try:
+            news_data = await get_news_data(symbol, days_back=criteria.get('max_days', 30))
+            
+            if 'error' in news_data:
+                rejected.append({
+                    "symbol": symbol,
+                    "error": news_data['error']
+                })
+                continue
+                
+            # Combine all news for searching
+            all_news = (
+                news_data.get('recent_news', []) + 
+                news_data.get('key_events', []) + 
+                news_data.get('management_changes', [])
+            )
+            
+            # Filter by date range
+            min_date = datetime.datetime.now() - datetime.timedelta(days=criteria.get('max_days', 30))
+            max_date = datetime.datetime.now() - datetime.timedelta(days=criteria.get('min_days', 0))
+            
+            filtered_news = [
+                news for news in all_news
+                if min_date <= datetime.datetime.fromisoformat(news['published_at']) <= max_date
+            ]
+            
+            # Check keywords
+            keywords = criteria.get('keywords', [])
+            exclude_keywords = criteria.get('exclude_keywords', [])
+            require_all = criteria.get('require_all_keywords', False)
+            
+            matching_news = []
+            for news in filtered_news:
+                text = f"{news['title']} {news['summary']}".lower()
+                
+                # Check excluded keywords first
+                if any(kw.lower() in text for kw in exclude_keywords):
+                    continue
+                    
+                # Check included keywords
+                if keywords:
+                    if require_all:
+                        if all(kw.lower() in text for kw in keywords):
+                            matching_news.append(news)
+                    else:
+                        if any(kw.lower() in text for kw in keywords):
+                            matching_news.append(news)
+                else:
+                    matching_news.append(news)
+                    
+            # Check management changes if requested
+            if criteria.get('management_changes'):
+                if not news_data.get('management_changes'):
+                    rejected.append({
+                        "symbol": symbol,
+                        "reason": "No recent management changes found"
+                    })
+                    continue
+                    
+            # Add to results if we found matching news
+            if matching_news:
+                results.append({
+                    "symbol": symbol,
+                    "matching_news": matching_news,
+                    "management": news_data.get('current_management'),
+                    "company_info": news_data.get('company_info')
+                })
+            else:
+                rejected.append({
+                    "symbol": symbol,
+                    "reason": "No matching news found"
+                })
+                
+        except Exception as e:
+            logger.error(f"Error screening news for {symbol}: {str(e)}")
+            rejected.append({
+                "symbol": symbol,
+                "error": str(e)
+            })
+            
+    return {
+        "screen_type": "news",
+        "criteria": criteria,
+        "matches": len(results),
+        "results": results,
+        "rejected": rejected,
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+
+async def run_custom_screen(symbols: Optional[List[str]], criteria: dict) -> dict:
+    """
+    Run custom combination screen that can mix technical, fundamental, options, and news criteria
+    
+    Example criteria:
+    {
         "technical": {
             "min_price": 20,
-            "min_volume": 1000000,
             "above_sma_200": true
         },
         "fundamental": {
-            "min_market_cap": 10000000000,
-            "max_pe": 30
+            "min_market_cap": 10000000000
         },
         "options": {
-            "min_option_volume": 10000,
-            "max_iv": 80,
-            "min_days_to_earnings": 5
+            "min_option_volume": 10000
+        },
+        "news": {
+            "keywords": ["acquisition"],
+            "max_days": 30,
+            "management_changes": true
         }
     }
     """
     try:
-        # Get symbols list
         if not symbols:
             if 'symbols' in criteria:
                 symbols = [criteria['symbols']] if isinstance(criteria['symbols'], str) else criteria['symbols']
@@ -1084,7 +1299,6 @@ async def run_custom_screen(symbols: Optional[List[str]], criteria: dict) -> dic
                 category = criteria.get('category')
                 symbols = await data_store.default_symbols.get_symbols(category)
 
-        # Initialize results
         results = []
         rejected_results = []
 
@@ -1092,6 +1306,7 @@ async def run_custom_screen(symbols: Optional[List[str]], criteria: dict) -> dic
         technical_criteria = criteria.get('technical', {})
         fundamental_criteria = criteria.get('fundamental', {})
         options_criteria = criteria.get('options', {})
+        news_criteria = criteria.get('news', {})
 
         # Process each symbol
         for symbol in symbols:
@@ -1099,26 +1314,53 @@ async def run_custom_screen(symbols: Optional[List[str]], criteria: dict) -> dic
                 rejection_reasons = []
                 symbol_data = {'symbol': symbol}
 
-                # Run technical screen if criteria provided
+                # Run each screen type if criteria provided
                 if technical_criteria:
                     tech_result = await run_single_technical_screen(symbol, technical_criteria)
                     if tech_result.get('rejection_reasons'):
                         rejection_reasons.extend(tech_result['rejection_reasons'])
                     symbol_data.update(tech_result.get('data', {}))
 
-                # Run fundamental screen if criteria provided and not rejected yet
                 if fundamental_criteria and not rejection_reasons:
                     fund_result = await run_single_fundamental_screen(symbol, fundamental_criteria)
                     if fund_result.get('rejection_reasons'):
                         rejection_reasons.extend(fund_result['rejection_reasons'])
                     symbol_data.update(fund_result.get('data', {}))
 
-                # Run options screen if criteria provided and not rejected yet
                 if options_criteria and not rejection_reasons:
                     opt_result = await run_single_options_screen(symbol, options_criteria)
                     if opt_result.get('rejection_reasons'):
                         rejection_reasons.extend(opt_result['rejection_reasons'])
                     symbol_data.update(opt_result.get('data', {}))
+
+                # Add news screening
+                if news_criteria and not rejection_reasons:
+                    news_result = await get_news_data(symbol, days_back=news_criteria.get('max_days', 30))
+                    if 'error' in news_result:
+                        rejection_reasons.append(f"News error: {news_result['error']}")
+                    else:
+                        # Apply news criteria
+                        matching_news = []
+                        all_news = (
+                            news_result.get('recent_news', []) + 
+                            news_result.get('key_events', []) + 
+                            news_result.get('management_changes', [])
+                        )
+                        
+                        for news in all_news:
+                            text = f"{news['title']} {news['summary']}".lower()
+                            keywords = news_criteria.get('keywords', [])
+                            if keywords and not any(kw.lower() in text for kw in keywords):
+                                continue
+                            matching_news.append(news)
+                            
+                        if news_criteria.get('management_changes') and not news_result.get('management_changes'):
+                            rejection_reasons.append("No recent management changes found")
+                        elif matching_news:
+                            symbol_data['news'] = matching_news
+                            symbol_data['management'] = news_result.get('current_management')
+                        else:
+                            rejection_reasons.append("No matching news found")
 
                 # Add to appropriate results list
                 if rejection_reasons:
