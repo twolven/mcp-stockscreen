@@ -167,6 +167,9 @@ Replace "path/to/stockscreen.py" with the full path to where you saved the stock
         },
         "options": {
             # Any options criteria from above
+        },
+        "news": {
+            # Any news criteria from above
         }
     },
     "watchlist": str,                    # Optional: name of watchlist to screen
