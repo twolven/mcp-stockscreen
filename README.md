@@ -265,7 +265,7 @@ All functions include error handling, detailed market data, and comprehensive re
 
 ## Requirements
 
-- Python 3.8+
+- Python 3.12+
 - MCP Server
 - yfinance
 - pandas
