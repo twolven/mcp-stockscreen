@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/twolven-mcp-stockscreen-badge.png)](https://mseep.ai/app/twolven-mcp-stockscreen)
+
 # StockScreen MCP Server
 
 A Model Context Protocol (MCP) server providing comprehensive stock screening capabilities through Yahoo Finance. Enables LLMs to screen stocks based on technical, fundamental, and options criteria, with support for watchlist management and result storage.
