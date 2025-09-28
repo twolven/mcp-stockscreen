@@ -17,10 +17,36 @@ import numpy as np
 import os
 from pathlib import Path
 
-# Default to a data directory in current working directory if not specified
-DEFAULT_DATA_PATH = os.environ.get('STOCKSCREEN_DATA_PATH', 
-    os.path.join(os.path.dirname(__file__), "data"))
-DEFAULT_LOG_PATH = os.path.join(os.path.dirname(__file__), "stockscreen_v1.log")
+# Default to a data directory relative to the script location
+# This ensures MCP servers work correctly regardless of execution context
+script_dir = os.path.dirname(__file__)
+DEFAULT_DATA_PATH = os.environ.get('STOCKSCREEN_DATA_PATH',
+    os.path.join(script_dir, "data"))
+DEFAULT_LOG_PATH = os.path.join(script_dir, "stockscreen_v1.log")
+
+# Auto-migrate existing data from old CWD-based location if needed
+def migrate_legacy_data():
+    """Migrate data from old CWD-based location to new script-relative location"""
+    if os.environ.get('STOCKSCREEN_DATA_PATH'):
+        return  # User has explicitly set data path, skip migration
+
+    old_data_path = os.path.join(os.getcwd(), 'data')
+    new_data_path = DEFAULT_DATA_PATH
+
+    # Only migrate if old path exists, is different from new path, and new doesn't exist
+    if (os.path.exists(old_data_path) and
+        os.path.abspath(old_data_path) != os.path.abspath(new_data_path) and
+        not os.path.exists(new_data_path)):
+        try:
+            import shutil
+            shutil.move(old_data_path, new_data_path)
+            print(f"[INFO] Migrated data from {old_data_path} to {new_data_path}")
+        except Exception as e:
+            print(f"[WARNING] Could not auto-migrate data: {e}")
+            print(f"[WARNING] Please manually move data from {old_data_path} to {new_data_path}")
+
+# Perform migration check on module load
+migrate_legacy_data()
 
 # Configure logging
 logging.basicConfig(
