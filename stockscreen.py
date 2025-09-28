@@ -19,14 +19,15 @@ from pathlib import Path
 
 # Default to a data directory in current working directory if not specified
 DEFAULT_DATA_PATH = os.environ.get('STOCKSCREEN_DATA_PATH', 
-    str(Path.cwd() / 'data'))
+    os.path.join(os.path.dirname(__file__), "data"))
+DEFAULT_LOG_PATH = os.path.join(os.path.dirname(__file__), "stockscreen_v1.log")
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("stockscreen_v1.log"),
+        logging.FileHandler(DEFAULT_LOG_PATH),
         logging.StreamHandler()
     ]
 )
