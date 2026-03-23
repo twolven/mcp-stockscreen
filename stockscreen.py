@@ -938,7 +938,7 @@ async def get_earnings_dates(ticker: yf.Ticker) -> dict:
         days_to_earnings = None
         if next_dates:
             earliest_date = next_dates[0]  # Will be a datetime.date object
-            days_to_earnings = (earliest_date - datetime.now().date()).days
+            days_to_earnings = (earliest_date - datetime.datetime.now().date()).days
             
         return {
             "next_earnings": next_dates[0] if next_dates else None,

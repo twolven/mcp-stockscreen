@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /Users/benjaminmarchand/IdeaProjects/mcp-stockscreen -type f -name *.md -o -name *.json -o -name *.yaml -o -name *.yml)",
+      "Bash(find /Users/benjaminmarchand/IdeaProjects/mcp-stockscreen -maxdepth 2 -not -path */.git/* -type f -o -type d)",
+      "Skill(update-config)",
+      "WebSearch",
+      "Bash(source /Users/benjaminmarchand/IdeaProjects/mcp-stockscreen/venv/bin/activate)",
+      "Bash(pip install:*)",
+      "Bash(source venv/bin/activate)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python -m pytest tests/test_stockscreen.py::TestRunOptionsScreen::test_earnings_date_filter -v)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "Context7"
+  ]
+}
