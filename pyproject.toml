@@ -1,3 +1,19 @@
+[project]
+name = "mcp-stockscreen"
+version = "2.0.0"
+description = "MCP server for stock screening with Yahoo Finance"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.6",
+    "yfinance>=1.2.0",
+    "pydantic>=2.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+]
+
+[project.scripts]
+stockscreen = "stockscreen.server:main"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

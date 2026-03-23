@@ -1,10 +1,7 @@
 """Unit tests for stockscreen.py MCP server."""
 
-import asyncio
 import datetime
 import json
-import os
-from collections import namedtuple
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -771,7 +768,182 @@ class TestGetNewsData:
 
 
 # ============================================================
-# 15. get_earnings_dates
+# 15. run_single_technical_screen
+# ============================================================
+class TestRunSingleTechnicalScreen:
+    def _make_mock_ticker(self, mock_ticker_cls, info, history_df):
+        mock_instance = MagicMock()
+        mock_instance.info = info
+        mock_instance.history.return_value = history_df
+        mock_ticker_cls.return_value = mock_instance
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_pass_no_criteria(self, mock_ticker_cls, mock_ticker_info, mock_history_df):
+        self._make_mock_ticker(mock_ticker_cls, mock_ticker_info, mock_history_df)
+        result = await run_single_technical_screen("AAPL", {})
+        assert result["rejection_reasons"] == []
+        assert result["data"]["price"] == 150.0
+        assert "volume" in result["data"]
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_min_price_rejection(self, mock_ticker_cls, mock_ticker_info, mock_history_df):
+        self._make_mock_ticker(mock_ticker_cls, mock_ticker_info, mock_history_df)
+        result = await run_single_technical_screen("AAPL", {"min_price": 200})
+        assert len(result["rejection_reasons"]) == 1
+        assert "Price" in result["rejection_reasons"][0]
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_max_price_rejection(self, mock_ticker_cls, mock_ticker_info, mock_history_df):
+        self._make_mock_ticker(mock_ticker_cls, mock_ticker_info, mock_history_df)
+        result = await run_single_technical_screen("AAPL", {"max_price": 100})
+        assert len(result["rejection_reasons"]) == 1
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_volume_rejection(self, mock_ticker_cls, mock_ticker_info, mock_history_df):
+        self._make_mock_ticker(mock_ticker_cls, mock_ticker_info, mock_history_df)
+        result = await run_single_technical_screen("AAPL", {"min_volume": 999_999_999_999})
+        assert any("Volume" in r for r in result["rejection_reasons"])
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_above_sma_200(self, mock_ticker_cls, mock_ticker_info, mock_history_df):
+        self._make_mock_ticker(mock_ticker_cls, mock_ticker_info, mock_history_df)
+        result = await run_single_technical_screen("AAPL", {"above_sma_200": True})
+        # Price=150, SMA200 of our synthetic data ~110 → should pass
+        assert "sma_200" in result["data"]
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_above_sma_50(self, mock_ticker_cls, mock_ticker_info, mock_history_df):
+        self._make_mock_ticker(mock_ticker_cls, mock_ticker_info, mock_history_df)
+        result = await run_single_technical_screen("AAPL", {"above_sma_50": True})
+        assert "sma_50" in result["data"]
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_empty_history_error(self, mock_ticker_cls, mock_ticker_info):
+        mock_instance = MagicMock()
+        mock_instance.info = mock_ticker_info
+        mock_instance.history.return_value = pd.DataFrame()
+        mock_ticker_cls.return_value = mock_instance
+        result = await run_single_technical_screen("AAPL", {})
+        assert len(result["rejection_reasons"]) == 1
+        assert "Technical analysis error" in result["rejection_reasons"][0]
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_exception_propagates(self, mock_ticker_cls):
+        # yf.Ticker() call is outside the try/except, so exception propagates
+        mock_ticker_cls.side_effect = RuntimeError("api down")
+        with pytest.raises(RuntimeError, match="api down"):
+            await run_single_technical_screen("AAPL", {})
+
+
+# ============================================================
+# 16. run_single_fundamental_screen
+# ============================================================
+class TestRunSingleFundamentalScreen:
+    @patch("stockscreen.yf.Ticker")
+    async def test_pass_no_criteria(self, mock_ticker_cls, mock_ticker_info):
+        mock_instance = MagicMock()
+        mock_instance.info = mock_ticker_info
+        mock_ticker_cls.return_value = mock_instance
+        result = await run_single_fundamental_screen("AAPL", {})
+        assert result["rejection_reasons"] == []
+        assert result["data"]["market_cap"] == 2_500_000_000_000
+        assert result["data"]["pe_ratio"] == 25.5
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_min_market_cap_rejection(self, mock_ticker_cls, mock_ticker_info):
+        mock_instance = MagicMock()
+        mock_instance.info = mock_ticker_info
+        mock_ticker_cls.return_value = mock_instance
+        result = await run_single_fundamental_screen("AAPL", {"min_market_cap": 10e12})
+        assert any("Market cap" in r for r in result["rejection_reasons"])
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_pe_range_rejection(self, mock_ticker_cls, mock_ticker_info):
+        mock_instance = MagicMock()
+        mock_instance.info = mock_ticker_info
+        mock_ticker_cls.return_value = mock_instance
+        # forwardPE=25.5, max_pe=20 → rejected
+        result = await run_single_fundamental_screen("AAPL", {"max_pe": 20})
+        assert any("P/E" in r for r in result["rejection_reasons"])
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_min_pe_rejection(self, mock_ticker_cls, mock_ticker_info):
+        mock_instance = MagicMock()
+        mock_instance.info = mock_ticker_info
+        mock_ticker_cls.return_value = mock_instance
+        # forwardPE=25.5, min_pe=30 → rejected
+        result = await run_single_fundamental_screen("AAPL", {"min_pe": 30})
+        assert any("P/E" in r for r in result["rejection_reasons"])
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_no_info_error(self, mock_ticker_cls):
+        mock_instance = MagicMock()
+        mock_instance.info = None
+        mock_ticker_cls.return_value = mock_instance
+        result = await run_single_fundamental_screen("BAD", {})
+        assert result["data"] == {}
+        assert "Fundamental analysis error" in result["rejection_reasons"][0]
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_exception_propagates(self, mock_ticker_cls):
+        # yf.Ticker() call is outside the try/except, so exception propagates
+        mock_ticker_cls.side_effect = RuntimeError("api down")
+        with pytest.raises(RuntimeError, match="api down"):
+            await run_single_fundamental_screen("AAPL", {})
+
+
+# ============================================================
+# 17. run_single_options_screen
+# ============================================================
+class TestRunSingleOptionsScreen:
+    def _setup_ticker(self, mock_ticker_cls, mock_option_chain):
+        mock_instance = MagicMock()
+        mock_instance.options = ("2024-03-15",)
+        mock_instance.option_chain.return_value = mock_option_chain
+        future_date = datetime.date.today() + datetime.timedelta(days=30)
+        mock_instance.calendar = {"Earnings Date": [future_date]}
+        mock_ticker_cls.return_value = mock_instance
+        return mock_instance
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_pass_no_criteria(self, mock_ticker_cls, mock_option_chain):
+        self._setup_ticker(mock_ticker_cls, mock_option_chain)
+        result = await run_single_options_screen("AAPL", {})
+        assert result["rejection_reasons"] == []
+        assert "option_volume" in result["data"]
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_min_option_volume_rejection(self, mock_ticker_cls, mock_option_chain):
+        self._setup_ticker(mock_ticker_cls, mock_option_chain)
+        result = await run_single_options_screen("AAPL", {"min_option_volume": 999_999_999})
+        assert any("Option volume" in r for r in result["rejection_reasons"])
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_earnings_criteria(self, mock_ticker_cls, mock_option_chain):
+        self._setup_ticker(mock_ticker_cls, mock_option_chain)
+        result = await run_single_options_screen("AAPL", {"max_days_to_earnings": 5})
+        # days_to_earnings=30 > max=5 → rejected
+        assert any("Days to earnings" in r for r in result["rejection_reasons"])
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_no_options_error(self, mock_ticker_cls):
+        mock_instance = MagicMock()
+        mock_instance.options = ()
+        mock_ticker_cls.return_value = mock_instance
+        result = await run_single_options_screen("AAPL", {})
+        assert result["data"] == {}
+        assert "Options analysis error" in result["rejection_reasons"][0]
+
+    @patch("stockscreen.yf.Ticker")
+    async def test_exception_propagates(self, mock_ticker_cls):
+        # yf.Ticker() call is outside the try/except, so exception propagates
+        mock_ticker_cls.side_effect = RuntimeError("api down")
+        with pytest.raises(RuntimeError, match="api down"):
+            await run_single_options_screen("AAPL", {})
+
+
+# ============================================================
+# 18. get_earnings_dates
 # ============================================================
 class TestGetEarningsDates:
     async def test_with_earnings_dates(self):

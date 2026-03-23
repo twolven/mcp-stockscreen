@@ -9,7 +9,13 @@
       "Bash(pip install:*)",
       "Bash(source venv/bin/activate)",
       "Bash(python -m pytest tests/ -v)",
-      "Bash(python -m pytest tests/test_stockscreen.py::TestRunOptionsScreen::test_earnings_date_filter -v)"
+      "Bash(python -m pytest tests/test_stockscreen.py::TestRunOptionsScreen::test_earnings_date_filter -v)",
+      "Bash(pip list:*)",
+      "Bash(pytest tests/ -v)",
+      "Bash(pytest tests/test_config.py -v)",
+      "Bash(pytest tests/test_exceptions.py -v)",
+      "Bash(pytest tests/test_schemas.py -v)",
+      "Bash(pytest tests/test_data_store.py -v)"
     ]
   },
   "enableAllProjectMcpServers": true,
