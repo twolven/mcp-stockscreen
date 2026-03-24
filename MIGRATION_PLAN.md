@@ -159,7 +159,7 @@
 **Contenu** : screening technique, fondamental, options, custom — **unifié, sans duplication**
 **Source** : toutes les fonctions `run_*_screen` et `run_single_*_screen` de `stockscreen.py`
 
-- [ ] Écrire `tests/test_screener_service.py`
+- [x] Écrire `tests/test_screener_service.py`
   - Tests screening technique (prix, volume, RSI, SMA, ATR)
   - Tests screening fondamental (market cap, PE, dividendes, revenue growth, ETF)
   - Tests screening options (IV, volume, put/call ratio, spreads, earnings)
@@ -167,11 +167,11 @@
   - Tests : symboles depuis watchlist, depuis critères, ou défaut
   - Tests : résultats rejetés avec raisons
   - Tests : erreur sur un symbole n'arrête pas les autres
-- [ ] Créer `stockscreen/services/screener.py`
+- [x] Créer `stockscreen/services/screener.py`
   - Classe `ScreenerService` avec injection de `YahooProvider`, `DataStore`, `NewsService`
   - UNE seule méthode `_screen_single()` par type (plus de duplication `run_*` / `run_single_*`)
   - Méthode publique `run(screen_type, criteria, watchlist_name)` qui boucle sur les symboles
-- [ ] Lancer `pytest tests/test_screener_service.py` — vert
+- [x] Lancer `pytest tests/test_screener_service.py` — vert (29/29)
 
 ---
 
@@ -181,45 +181,45 @@
 **Contenu** : déclaration des tools, câblage vers les services, `main()`
 **Source** : `list_tools()`, `call_tool()`, `main()` de `stockscreen.py`
 
-- [ ] Écrire `tests/test_server.py`
+- [x] Écrire `tests/test_server.py`
   - Test : le serveur FastMCP s'initialise
   - Test : les tools sont déclarés (run_stock_screen, get_stock_news, manage_watchlist, get_screening_result)
   - Test : appel d'un tool route vers le bon service
   - Test : erreurs de validation retournent une réponse propre
-- [ ] Créer `stockscreen/server.py`
+- [x] Créer `stockscreen/server.py`
   - `FastMCP("stockscreen")`
   - Un `@mcp.tool()` par outil
   - Instanciation des services avec injection des dépendances
   - `mcp.run()` dans `main()`
-- [ ] Lancer `pytest tests/test_server.py` — vert
+- [x] Lancer `pytest tests/test_server.py` — vert (10/10)
 
 ### 5.2 `stockscreen/__init__.py` — Exports du package
-- [ ] Configurer les imports publics dans `__init__.py`
-- [ ] Mettre à jour `pyproject.toml` avec le point d'entrée : `stockscreen.server:main`
+- [x] Configurer les imports publics dans `__init__.py`
+- [x] Mettre à jour `pyproject.toml` avec le point d'entrée : `stockscreen.server:main`
 
 ---
 
 ## Phase 6 — Intégration et nettoyage
 
 ### 6.1 Tests d'intégration end-to-end
-- [ ] Écrire `tests/test_integration.py`
+- [x] Écrire `tests/test_integration.py`
   - Test : un screening technique complet (mock yfinance au niveau provider)
   - Test : cycle watchlist create → screen → get result
   - Test : screening custom multi-critères
-- [ ] Lancer `pytest tests/test_integration.py` — vert
+- [x] Lancer `pytest tests/test_integration.py` — vert (8/8)
 
 ### 6.2 Lancer toute la suite de tests
-- [ ] `pytest` — tous les tests passent
+- [x] `pytest` — 152/152 tests passent (hors test_stockscreen.py ancienne suite)
 
 ### 6.3 Mettre à jour la configuration
-- [ ] Mettre à jour `.mcp.json` si besoin (nouveau point d'entrée)
-- [ ] Mettre à jour `CLAUDE.md` avec la nouvelle architecture
+- [x] Mettre à jour `.mcp.json` si besoin (nouveau point d'entrée) — pas de `.mcp.json` dans le projet, `pyproject.toml` avait déjà `stockscreen.server:main`
+- [x] Mettre à jour `CLAUDE.md` avec la nouvelle architecture
 
 ### 6.4 Nettoyage
-- [ ] Supprimer `stockscreen.py` (l'ancien monolithe)
-- [ ] Supprimer `tests/test_stockscreen.py` (remplacé par les nouveaux tests)
-- [ ] Supprimer les anciens `conftest.py` fixtures si devenues inutiles
-- [ ] `pytest` — dernière vérification, tout est vert
+- [x] Supprimer `stockscreen.py` (l'ancien monolithe)
+- [x] Supprimer `tests/test_stockscreen.py` (remplacé par les nouveaux tests)
+- [x] Supprimer les anciens `conftest.py` fixtures si devenues inutiles — conservé (fixtures utilisées par les nouveaux tests)
+- [x] `pytest` — dernière vérification, 152/152 tests passent
 
 ---
 

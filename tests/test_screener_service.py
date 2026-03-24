@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from stockscreen.services.screener import ScreenerService
+from stockscreen.services.screener import ScreenerService, _dividend_yield_pct
 from stockscreen.store.data_store import ScreenerDataStore
 
 
@@ -172,6 +172,51 @@ class TestTechnicalScreen:
         _setup_provider(mock_provider, mock_ticker_info, mock_history_df)
         result = await screener_service.run("technical", {"symbols": ["AAPL"]})
         assert result["matches"] == 1
+
+
+# ============================================================
+# 1b. Dividend yield normalisation
+# ============================================================
+
+class TestDividendYieldPct:
+    def test_computed_from_rate_and_price(self):
+        """dividendRate / price takes priority."""
+        info = {"dividendRate": 4.0, "regularMarketPrice": 100.0}
+        assert _dividend_yield_pct(info) == pytest.approx(4.0)
+
+    def test_uses_trailing_rate_when_dividendrate_missing(self):
+        info = {"trailingAnnualDividendRate": 3.0, "regularMarketPrice": 100.0}
+        assert _dividend_yield_pct(info) == pytest.approx(3.0)
+
+    def test_uses_current_price_when_market_price_missing(self):
+        info = {"dividendRate": 2.0, "currentPrice": 50.0}
+        assert _dividend_yield_pct(info) == pytest.approx(4.0)
+
+    def test_us_decimal_format(self):
+        """Yahoo US format: dividendYield = 0.045 → 4.5%."""
+        info = {"dividendYield": 0.045}
+        assert _dividend_yield_pct(info) == pytest.approx(4.5)
+
+    def test_non_us_percent_format(self):
+        """Yahoo intl format: dividendYield = 4.5 (already %) → 4.5%."""
+        info = {"dividendYield": 4.5}
+        assert _dividend_yield_pct(info) == pytest.approx(4.5)
+
+    def test_no_dividend_returns_zero(self):
+        assert _dividend_yield_pct({}) == 0.0
+
+    def test_none_dividend_yield_returns_zero(self):
+        assert _dividend_yield_pct({"dividendYield": None}) == 0.0
+
+    def test_rate_over_price_beats_yield_field(self):
+        """When both rate and yield field are present, rate/price wins."""
+        info = {"dividendRate": 5.0, "regularMarketPrice": 100.0, "dividendYield": 0.01}
+        assert _dividend_yield_pct(info) == pytest.approx(5.0)
+
+    def test_trailing_yield_fallback(self):
+        """No rate, no dividendYield → use trailingAnnualDividendYield."""
+        info = {"trailingAnnualDividendYield": 0.032}
+        assert _dividend_yield_pct(info) == pytest.approx(3.2)
 
 
 # ============================================================

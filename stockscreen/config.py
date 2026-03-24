@@ -13,6 +13,33 @@ DEFAULT_DATA_PATH = os.environ.get(
 )
 DEFAULT_LOG_PATH = os.path.join(_package_dir, "stockscreen_v1.log")
 
+# ---------------------------------------------------------------------------
+# Symbol source configuration
+# ---------------------------------------------------------------------------
+
+# Comma-separated list of enabled index fetchers (order preserved).
+# Override with STOCKSCREEN_SYMBOL_SOURCES env var.
+SYMBOL_SOURCES: list[str] = [
+    s.strip()
+    for s in os.environ.get(
+        "STOCKSCREEN_SYMBOL_SOURCES",
+        "sp500,nasdaq100,cac40,sbf120,dax,ftse100,aex",
+    ).split(",")
+    if s.strip()
+]
+
+# Refresh symbol cache at server startup when cache is missing or expired.
+# Set STOCKSCREEN_REFRESH_ON_STARTUP=false to disable.
+REFRESH_ON_STARTUP: bool = (
+    os.environ.get("STOCKSCREEN_REFRESH_ON_STARTUP", "true").lower() != "false"
+)
+
+# How many hours before a symbol cache entry is considered stale.
+# Override with STOCKSCREEN_SYMBOL_REFRESH_INTERVAL_HOURS env var.
+SYMBOL_REFRESH_INTERVAL_HOURS: float = float(
+    os.environ.get("STOCKSCREEN_SYMBOL_REFRESH_INTERVAL_HOURS", "24")
+)
+
 
 def migrate_legacy_data(target_path: str | None = None) -> None:
     """Migrate data from old CWD-based location to new package-relative location.
