@@ -190,15 +190,56 @@ async def run_stock_screen(
 
 @mcp.tool()
 async def get_stock_news(symbol: str, days_back: int = 30) -> dict:
-    """Get recent news and company updates for a stock.
+    """Get recent news and company updates for a single stock ticker.
+
+    Use this tool to:
+    - Surface M&A activity, earnings surprises, regulatory actions
+    - Detect management changes (CEO/CFO/Chairman departures or appointments)
+    - Find key events (SEC investigations, lawsuits, product launches)
+    - Check news sentiment before screening options or fundamentals
 
     Args:
-        symbol: Stock ticker symbol (e.g. "AAPL", "MSFT").
-        days_back: How many days of news history to retrieve (default 30).
+        symbol: Yahoo Finance ticker symbol. Use the exchange-suffixed form for
+            non-US equities (e.g. "TTE.PA" for TotalEnergies Paris, "AIR.PA"
+            for Airbus, "DBK.DE" for Deutsche Bank). US symbols need no suffix
+            (e.g. "AAPL", "MSFT", "NVDA").
+
+        days_back: Number of calendar days of history to include (default 30,
+            max meaningful value ~90 — Yahoo rarely returns older articles).
 
     Returns:
-        Dict with keys: recent_news, key_events, management_changes,
-        current_management, company_info, last_updated.
+        Dict with the following keys:
+
+        recent_news (list[dict]):
+            All news items within the date window, each with:
+              title (str)           — article headline
+              publisher (str)       — source outlet
+              published (str)       — ISO datetime
+              summary (str|None)    — article summary when available
+              url (str|None)        — article URL
+
+        key_events (list[dict]):
+            Subset of recent_news matching regulatory / legal keywords
+            (SEC, lawsuit, investigation, probe). Same structure as recent_news.
+
+        management_changes (list[dict]):
+            Subset matching executive-change keywords (CEO, CFO, chief,
+            chairman, president). Same structure as recent_news.
+
+        current_management (dict):
+            Company officers from Yahoo: {name, title, totalPay} per officer.
+            May be empty for ETFs and some foreign listings.
+
+        company_info (dict):
+            Static company metadata: sector, industry, country, website,
+            longBusinessSummary, fullTimeEmployees, marketCap.
+
+        last_updated (str):
+            ISO datetime of when this response was generated.
+
+    Example usage:
+        get_stock_news(symbol="AAPL", days_back=14)
+        get_stock_news(symbol="TTE.PA", days_back=30)
     """
     try:
         return await _news.get_news_data(symbol, days_back=days_back)
@@ -215,22 +256,50 @@ async def manage_watchlist(
 ) -> dict:
     """Create, update, delete, or retrieve a named watchlist of stock symbols.
 
+    Watchlists let you save a set of tickers under a memorable name and reuse
+    them as the symbol pool for run_stock_screen without repeating the list
+    every time.
+
+    Typical workflow:
+        1. manage_watchlist(action="create", name="cac-picks",
+                            symbols=["TTE.PA", "AIR.PA", "MC.PA"])
+        2. run_stock_screen(screen_type="fundamental",
+                            criteria={"min_dividend": 3.0},
+                            watchlist="cac-picks")
+
     Args:
-        action: Operation to perform. One of:
-            - "create" — create a new watchlist (requires symbols)
-            - "update" — replace the symbols in an existing watchlist (requires symbols)
-            - "delete" — remove the watchlist
-            - "get"    — retrieve the symbol list
+        action: Operation to perform. Exactly one of:
+            - "create" — create a new watchlist; fails if name already exists.
+                         Requires symbols.
+            - "update" — fully replace the symbol list of an existing watchlist.
+                         Requires symbols.
+            - "get"    — return the symbol list for the named watchlist.
+            - "delete" — permanently remove the watchlist.
 
-        name: Watchlist name. Must be 1-50 characters, alphanumeric with _ and -.
-            Examples: "my_watchlist", "tech-picks", "sp500-subset"
+        name: Watchlist identifier. Rules:
+            - 1 to 50 characters
+            - Alphanumeric characters, underscore (_), and hyphen (-)
+            - Cannot start with a hyphen
+            - Examples: "tech-picks", "cac40_div", "my_watchlist"
 
-        symbols: List of stock ticker symbols (required for create/update).
-            Each symbol must be 1-10 characters. Maximum 1000 symbols.
-            Example: ["AAPL", "MSFT", "GOOGL"]
+        symbols: List of ticker symbols (required for "create" and "update").
+            - Each symbol: 1–10 alphanumeric characters plus dot and hyphen
+              (e.g. "AAPL", "TTE.PA", "BRK-B")
+            - Maximum 1000 symbols per watchlist
+            - Symbols are automatically uppercased
 
     Returns:
-        Dict with a "message" key on success, or "name"+"symbols" for get action.
+        - create/update/delete: {"message": "<confirmation text>"}
+        - get:                  {"name": "<name>", "symbols": ["SYM1", ...]}
+        - error:                {"error": "<description>"}
+
+    Example usage:
+        manage_watchlist(action="create", name="euronext-div",
+                         symbols=["TTE.PA", "AIR.PA", "SAN.PA", "OR.PA"])
+        manage_watchlist(action="get", name="euronext-div")
+        manage_watchlist(action="update", name="euronext-div",
+                         symbols=["TTE.PA", "MC.PA"])
+        manage_watchlist(action="delete", name="euronext-div")
     """
     try:
         return await _watchlist.dispatch(action, name, symbols)
@@ -244,14 +313,28 @@ async def manage_watchlist(
 
 @mcp.tool()
 async def get_screening_result(name: str) -> dict:
-    """Retrieve a previously saved screening result.
+    """Retrieve a previously saved stock screening result by name.
+
+    Results are saved by passing save_result="<name>" to run_stock_screen.
+    Use this tool to re-examine a past screen without re-fetching market data,
+    or to compare two runs of the same criteria at different dates.
 
     Args:
-        name: The name used when the result was saved via run_stock_screen's
-            save_result parameter.
+        name: The exact name used in the save_result parameter of run_stock_screen.
+            Names follow the same rules as watchlist names (alphanumeric, _, -).
 
     Returns:
-        The full screening result dict, or {"error": "..."} if not found.
+        The full screening result dict as originally returned by run_stock_screen,
+        including: screen_type, criteria, matches, results, rejected, timestamp.
+        Returns {"error": "Screening result '<name>' not found"} if absent.
+
+    Example usage:
+        # Save during screening:
+        run_stock_screen(screen_type="fundamental",
+                         criteria={"category": "cac40", "min_dividend": 3.0},
+                         save_result="cac40-div-2026-03")
+        # Retrieve later:
+        get_screening_result(name="cac40-div-2026-03")
     """
     try:
         result = _screener.store.load_screening_result(name)
@@ -270,16 +353,35 @@ async def get_screening_result(name: str) -> dict:
 
 @mcp.tool()
 async def refresh_symbols(category: str | None = None) -> dict:
-    """Force a refresh of the symbol lists fetched from index sources.
+    """Force a refresh of the cached symbol lists for one or all index categories.
+
+    Symbol lists are automatically fetched from Wikipedia and cached locally on
+    first use. They expire after 24 hours (configurable via
+    STOCKSCREEN_SYMBOL_REFRESH_INTERVAL_HOURS). Use this tool when:
+    - You want to pull in a recent index constituent change immediately.
+    - A screening run returned fewer symbols than expected.
+    - You have just changed STOCKSCREEN_SYMBOL_SOURCES.
 
     Args:
-        category: One of the registered index names (e.g. "cac40", "sp500",
-            "nasdaq100", "sbf120", "dax", "ftse100", "aex").
-            Pass None (omit the argument) to refresh all sources at once.
+        category: Index source to refresh. Supported values:
+            - "sp500"      — S&P 500 (≈ 503 US large-cap stocks)
+            - "nasdaq100"  — Nasdaq 100 (≈ 102 US tech/growth stocks)
+            - "cac40"      — CAC 40 (40 French blue-chips, ".PA" suffix)
+            - "sbf120"     — SBF 120 (120 Euronext Paris stocks, ".PA" suffix)
+            - "dax"        — DAX (40 German blue-chips, ".DE" suffix)
+            - "ftse100"    — FTSE 100 (100 UK blue-chips, ".L" suffix)
+            - "aex"        — AEX (25 Amsterdam stocks, ".AS" suffix)
+            Pass None or omit to refresh ALL active sources at once.
 
     Returns:
-        Dict mapping each refreshed category to the number of symbols fetched,
-        or to {"error": "..."} if the fetch failed for that category.
+        Dict mapping each category to the count of symbols fetched:
+            {"sp500": 503, "cac40": 40, ...}
+        On partial failure, the failing category maps to an error dict:
+            {"sp500": 503, "dax": {"error": "HTTP 503"}}
+
+    Example usage:
+        refresh_symbols()                  # refresh all active sources
+        refresh_symbols(category="cac40")  # refresh CAC 40 only
     """
     try:
         return await _symbol_svc.refresh(category)
@@ -298,34 +400,94 @@ async def get_palmares(
     limit: int = 50,
     force_refresh: bool = False,
 ) -> dict:
-    """Get the Boursorama dividend palmares — top yielding French equities.
+    """Get the Boursorama dividend palmares — French equities ranked by dividend yield.
+
+    The palmares is scraped from Boursorama's multi-page dividend ranking table
+    (https://www.boursorama.com/bourse/actions/palmares/dividendes/).  It covers
+    French/Euronext-Paris equities and includes up to three years of dividend data.
+    Results are sorted by best rendement descending (highest yield first), with
+    entries that have no dividend data pushed to the bottom.
+
+    The snapshot is cached on disk for 24 hours by default (configurable via
+    STOCKSCREEN_PALMARES_CACHE_TTL env var in seconds). A cache hit returns
+    immediately without any network call.
 
     Args:
-        min_rendement:  Minimum dividend yield in % (e.g. 3.0).
-        max_rendement:  Maximum dividend yield in %.
-        nom_contains:   Case-insensitive substring filter on company name.
-        limit:          Maximum number of entries to return (default 50, max 500).
-        force_refresh:  Force a fresh scrape even if the cache is still valid.
+        min_rendement:  Keep only entries whose best historical rendement ≥ this
+            value (in %).  Example: 3.0 keeps only stocks yielding ≥ 3 %.
+
+        max_rendement:  Keep only entries whose best historical rendement ≤ this
+            value (in %).  Example: 10.0 excludes unusually high-yield/distressed
+            stocks.
+
+        nom_contains:   Case-insensitive substring match on the company name
+            (nom field).  Example: "total" matches "TotalEnergies SE" and
+            "Total Gabon".
+
+        limit:          Maximum number of entries to return after filtering
+            (default 50, capped to 500).  The total_entries field always reflects
+            the unfiltered snapshot size.
+
+        force_refresh:  Set to true to bypass the cache and trigger a fresh scrape
+            immediately.  Useful when you suspect stale data or want today's
+            dividend announcements.  Filters are still applied after the refresh.
 
     Returns:
-        Dict with keys:
-          fetched_at     — ISO datetime of the data snapshot.
-          total_entries  — Total entries before filtering.
-          returned       — Number of entries in this response.
-          entries        — List of dicts with code_bourso, nom, cours,
-                           dividendes [{annee, dividende, rendement}], isin.
+        Dict with the following keys:
+
+        fetched_at (str):
+            ISO datetime of the cached snapshot (when the last scrape ran).
+
+        total_entries (int):
+            Total number of entries in the snapshot *before* any filtering.
+            Useful to know how many stocks are in the palmares overall.
+
+        returned (int):
+            Number of entries actually returned after filtering and limit.
+
+        entries (list[dict]):
+            Filtered list of palmares entries, each with:
+              code_bourso (str)     — Boursorama internal ticker (e.g. "1rTTE")
+              nom (str)             — Company name (e.g. "TotalEnergies SE")
+              cours (float|None)    — Last known price in EUR
+              isin (str|None)       — ISIN if resolved, else None
+              dividendes (list[dict]):
+                Each element represents one dividend year:
+                  annee (str)           — Year (e.g. "2025")
+                  dividende (float|None)— Gross annual dividend in EUR
+                  rendement (float|None)— Dividend yield in % (dividende/cours × 100)
+
+    Example usage:
+        # Top 20 stocks yielding between 3 % and 8 %:
+        get_palmares(min_rendement=3.0, max_rendement=8.0, limit=20)
+
+        # All "Total" group stocks in the palmares:
+        get_palmares(nom_contains="total")
+
+        # Force a fresh scrape then return top 50:
+        get_palmares(force_refresh=True, limit=50)
+
+    Typical workflow with run_stock_screen:
+        # 1. Get high-yield candidates from palmares
+        palmares = get_palmares(min_rendement=5.0, limit=30)
+        symbols = [e["code_bourso"] for e in palmares["entries"]]
+
+        # 2. Cross-check technicals on those candidates
+        run_stock_screen(
+            screen_type="technical",
+            criteria={"symbols": symbols, "above_sma_200": true}
+        )
     """
     try:
         limit = max(1, min(limit, 500))
         if force_refresh:
-            snap = await _palmares_svc.refresh()
-        else:
-            snap = await _palmares_svc.get(
-                min_rendement=min_rendement,
-                max_rendement=max_rendement,
-                nom_contains=nom_contains,
-                limit=limit,
-            )
+            await _palmares_svc.refresh()   # seed fresh cache, then fall through to get()
+        snap = await _palmares_svc.get(
+            min_rendement=min_rendement,
+            max_rendement=max_rendement,
+            nom_contains=nom_contains,
+            limit=limit,
+        )
         from dataclasses import asdict
         return {
             "fetched_at": snap.fetched_at,

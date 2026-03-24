@@ -1,10 +1,12 @@
 # StockScreen MCP Server
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server for stock screening. Expose four tools to any MCP-compatible client (Claude Code, Claude Desktop…) to screen stocks on technical, fundamental, options, and news criteria, manage watchlists, and persist results.
+A [Model Context Protocol](https://modelcontextprotocol.io) server for stock screening. Expose six tools to any MCP-compatible client (Claude Code, Claude Desktop…) to screen stocks on technical, fundamental, options, and news criteria, manage watchlists, retrieve dividend rankings, and persist results.
 
 **Data sources**
-- **Yahoo Finance** (`YahooProvider`) — primary source used by all screening tools. Covers US and international equities, ETFs, options chains, and news.
-- **Boursorama** (`BoursoramaProvider`) — supplementary provider for Euronext Paris data (cours, dividende, rendement, consensus analystes, historique CA/RN). Useful when Yahoo's dividend data is unreliable for French stocks. **Not wired into the screening tools by default** — called directly via Python API (see [Data sources](#data-sources-detail) below).
+- **Yahoo Finance** (`YahooProvider`) — primary source for price, volume, RSI, P/E, options chains, and news. Covers US and international equities and ETFs.
+- **Boursorama** (`BoursoramaProvider`) — supplementary provider for Euronext Paris data (cours, dividende, rendement, consensus analystes, historique CA/RN). Integrated transparently via `MarketDataFacade`.
+- **Euronext** (`EuronextProvider`) — bidirectional ISIN ↔ ticker resolution. Converts ISIN identifiers to Yahoo-compatible tickers (e.g. `FR0000131104` → `TTE.PA`).
+- **Boursorama Palmares** (`BoursoramaPalmaresScaper`) — scrapes the full multi-page Boursorama dividend ranking table (palmarès dividendes Euronext Paris).
 
 ---
 
@@ -17,6 +19,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for stock scr
 | **Options** | IV, option volume, put/call ratio, bid-ask spread, days-to-earnings |
 | **News** | Keyword matching, management changes, date range |
 | **Custom** | Combine any of the above — short-circuits on first rejection |
+| **Dividend palmares** | Boursorama top-yield ranking with multi-year dividend history, filterable by yield and name |
 
 ---
 
@@ -92,7 +95,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 }
 ```
 
-Restart Claude Desktop — the four tools will appear in the tools panel.
+Restart Claude Desktop — the tools will appear in the tools panel.
 
 ---
 
@@ -217,11 +220,16 @@ Screen a list of stocks and return those that match all criteria.
 Get recent news and company updates for a single ticker.
 
 ```
-symbol: "AAPL"
-days_back: 30
+symbol: "AAPL"         # US ticker, or "TTE.PA" for Euronext Paris, "DBK.DE" for Xetra, etc.
+days_back: 30          # default 30, max ~90
 ```
 
-Returns `recent_news`, `key_events`, `management_changes`, `current_management`, `company_info`.
+Returns:
+- `recent_news` — all articles within the date window (title, publisher, published, summary, url)
+- `key_events` — subset matching regulatory/legal keywords (SEC, lawsuit, investigation…)
+- `management_changes` — subset matching executive keywords (CEO, CFO, chairman…)
+- `current_management` — company officers from Yahoo
+- `company_info` — sector, industry, country, website, employees, marketCap
 
 ---
 
@@ -238,11 +246,18 @@ Create, update, delete, or retrieve a named watchlist.
 
 ```
 action: "create"
-name: "tech-picks"
-symbols: ["AAPL", "MSFT", "GOOGL"]
+name: "cac-picks"                        # 1–50 chars, alphanumeric + _ and -
+symbols: ["TTE.PA", "AIR.PA", "MC.PA"]
 ```
 
-Watchlist names: 1–50 characters, alphanumeric plus `_` and `-`.
+Typical workflow — create a watchlist, then screen it:
+```json
+// 1. Save the list once
+{ "action": "create", "name": "cac-picks", "symbols": ["TTE.PA", "AIR.PA", "MC.PA"] }
+
+// 2. Screen it any time
+{ "screen_type": "fundamental", "criteria": { "min_dividend": 3.0 }, "watchlist": "cac-picks" }
+```
 
 ---
 
@@ -251,8 +266,75 @@ Watchlist names: 1–50 characters, alphanumeric plus `_` and `-`.
 Retrieve a result previously saved via `run_stock_screen`'s `save_result` parameter.
 
 ```
-name: "my-screen-run"
+name: "cac40-div-2026-03"
 ```
+
+Returns the full original screening result dict (screen_type, criteria, matches, results, rejected, timestamp), or `{"error": "..."}` if not found.
+
+---
+
+### `get_palmares`
+
+Get the Boursorama dividend palmares — French equities ranked by dividend yield, scraped from [Boursorama palmarès dividendes](https://www.boursorama.com/bourse/actions/palmares/dividendes/).
+
+Results are sorted by best rendement descending. The snapshot is cached for 24 h.
+
+```
+min_rendement: 3.0       # minimum yield in % (optional)
+max_rendement: 10.0      # maximum yield in % (optional)
+nom_contains: "total"    # case-insensitive name filter (optional)
+limit: 50                # max entries returned, capped at 500 (default 50)
+force_refresh: false     # force a fresh scrape (default false)
+```
+
+**Response:**
+```json
+{
+  "fetched_at": "2026-03-24T10:00:00",
+  "total_entries": 312,
+  "returned": 20,
+  "entries": [
+    {
+      "code_bourso": "1rTTE",
+      "nom": "TotalEnergies SE",
+      "cours": 62.5,
+      "isin": null,
+      "dividendes": [
+        { "annee": "2025", "dividende": 3.22, "rendement": 5.15 },
+        { "annee": "2026", "dividende": 3.40, "rendement": 5.44 }
+      ]
+    }
+  ]
+}
+```
+
+**Typical workflow — palmares → technical cross-check:**
+```json
+// 1. Get top 30 high-yield French stocks
+get_palmares(min_rendement=5.0, limit=30)
+
+// 2. Cross-check technicals on the results
+run_stock_screen(
+  screen_type="technical",
+  criteria={"symbols": ["1rTTE", "1rMC", ...], "above_sma_200": true}
+)
+```
+
+> **Note:** `code_bourso` values (e.g. `1rTTE`) work as screening symbols when Boursorama data is available through the facade. For Yahoo-based screening, resolve to the Yahoo ticker first (e.g. `TTE.PA`).
+
+---
+
+### `refresh_symbols`
+
+Force a refresh of the cached symbol lists for one or all index categories. Useful after a recent constituent change or when a screening run returned fewer symbols than expected.
+
+```
+category: "cac40"   # or omit to refresh all active sources at once
+```
+
+Supported categories: `sp500`, `nasdaq100`, `cac40`, `sbf120`, `dax`, `ftse100`, `aex`.
+
+Returns `{ "cac40": 40 }` (category → number of symbols fetched), or `{ "cac40": { "error": "..." } }` on failure.
 
 ---
 
@@ -291,65 +373,30 @@ Example — screen all CAC 40 stocks for dividend yield ≥ 3%:
 }
 ```
 
-You can force-refresh symbol lists with the `refresh_symbols` tool (see below).
-
 ---
 
-## Available Tools (full list)
-
-| Tool | Description |
-|---|---|
-| `run_stock_screen` | Screen stocks by technical / fundamental / options / news / custom criteria |
-| `get_stock_news` | Get recent news for a ticker |
-| `manage_watchlist` | Create / update / delete / get a named watchlist |
-| `get_screening_result` | Retrieve a previously saved screening result |
-| `refresh_symbols` | Force-refresh the symbol cache for one or all index categories |
-
-### `refresh_symbols`
-
-```
-category: "cac40"   # or omit to refresh all sources
-```
-
-Returns `{ "cac40": 40 }` (category → number of symbols fetched), or `{ "cac40": { "error": "..." } }` on failure.
-
----
-
-## Data sources detail
+## Data sources
 
 ### Yahoo Finance (primary — all screening tools)
 
-All four screening tools (`run_stock_screen`, `get_stock_news`, …) exclusively use `YahooProvider`, which wraps `yfinance` with:
+All screening tools use `YahooProvider` wrapped by `MarketDataFacade`, which adds:
 - True async via `asyncio.run_in_executor`
 - Exponential-backoff retry (3 attempts)
+- Automatic Boursorama enrichment for dividend/yield fields
 
-**Known limitation**: `dividendYield` from Yahoo is inconsistent for non-US stocks (sometimes decimal, sometimes already a %). The screener normalises it via `dividendRate / price` when available, then falls back to a format-detection heuristic.
+**Known limitation**: `dividendYield` from Yahoo is inconsistent for non-US stocks. The facade overrides it with Boursorama data when available.
 
-### Boursorama (supplementary — Python API only)
+### Boursorama (dividends + cours — Euronext Paris)
 
-`BoursoramaProvider` scrapes Boursorama for more reliable Euronext data. It is **not called automatically** by the screening tools — you must instantiate it directly in Python:
+`BoursoramaProvider` scrapes Boursorama for reliable Euronext dividend data. It is called automatically by `MarketDataFacade` for every quote — Boursorama is tried first for `dividende`, `rendement`, `last_dividend_date`, `consensus`, and `performance`; Yahoo is used as fallback.
 
-```python
-from stockscreen.providers.boursorama import BoursoramaProvider
-
-provider = BoursoramaProvider(
-    cache_dir="/path/to/cache",
-    cache_ttl_seconds=86400,    # 24 h
-    exchange_filter="Euronext", # None = all exchanges
-)
-
-quote = await provider.get_quote("FR0000131104")  # TotalEnergies ISIN
-print(quote.dividende)      # annual dividend in EUR
-print(quote.rendement)      # yield in %
-print(quote.consensus)      # analyst consensus label
-print(quote.performance)    # [{annee, ca, rn, marge}, ...]
-```
+Accepts either ISIN (e.g. `FR0000131104`) or Boursorama code (e.g. `1rTTE`) as input. Cache: one JSON file per ticker in `data/`, TTL 24 h.
 
 **`BoursoramaQuote` fields:**
 
 | Field | Type | Description |
 |---|---|---|
-| `isin` | str | ISIN used for the lookup |
+| `isin` | str | ISIN or code used for the lookup |
 | `code_bourso` | str | Boursorama internal code (e.g. `1rTTE`) |
 | `nom` | str | Company name |
 | `lien` | str | URL of the Boursorama page |
@@ -361,24 +408,19 @@ print(quote.performance)    # [{annee, ca, rn, marge}, ...]
 | `performance` | list[dict] | `[{annee, ca, rn, marge}]` per year |
 | `cached_at` | str | ISO timestamp of last fetch |
 
-**Cache**: one JSON file per ISIN in `cache_dir`. On network failure, stale cache is served as fallback. Call `provider.invalidate_cache(isin)` to force a fresh fetch.
+### Euronext (ISIN ↔ ticker resolution)
 
-**Exchange filter**: set `exchange_filter=None` to accept results from all exchanges (NYSE, XETRA, LSE, …). Coverage outside Euronext is limited to ETFs and derivatives.
+`EuronextProvider` resolves identifiers bidirectionally:
+- `resolve_ticker(isin)` → `EuronextRecord` (with `yahoo_ticker` like `TTE.PA`)
+- `resolve_isin(ticker)` → `EuronextRecord` (with `isin` like `FR0000131104`)
 
-**Switching between providers**: there is no automatic fallback between Yahoo and Boursorama. If you want to enrich Yahoo screening results with Boursorama dividend data, call both independently and merge:
+Cache is shared between both directions: resolving a ticker also caches the result under the ISIN key. TTL: 7 days (configurable via `STOCKSCREEN_EURONEXT_CACHE_TTL`).
 
-```python
-# Yahoo for screening
-result = await screener.run("fundamental", {"category": "cac40", "min_dividend": 2.0})
+Supported exchange suffixes: `.PA` (Euronext Paris), `.DE` (Xetra), `.L` (LSE), `.AS` (Amsterdam), `.MI` (Milan), `.MC` (Madrid), `.BR` (Brussels), `.LS` (Lisbon), `.HE` (Helsinki), `.ST` (Stockholm), `.OL` (Oslo).
 
-# Boursorama for accurate dividend data on matches
-bourso = BoursoramaProvider(cache_dir=cache_dir)
-for stock in result["results"]:
-    quote = await bourso.get_quote(stock["isin"])   # requires ISIN mapping
-    stock["dividende_bourso"] = quote.rendement
-```
+### Boursorama Palmares (dividend ranking)
 
-> A composite provider with automatic Yahoo → Boursorama fallback is not yet implemented.
+`BoursoramaPalmaresScaper` scrapes the full multi-page Boursorama dividend ranking table. Data includes up to 3 years of dividend history per stock. Cached as a single JSON snapshot (TTL: 24 h, configurable via `STOCKSCREEN_PALMARES_CACHE_TTL`).
 
 ---
 
@@ -390,6 +432,8 @@ for stock in result["results"]:
 | `STOCKSCREEN_SYMBOL_SOURCES` | `sp500,nasdaq100,cac40,sbf120,dax,ftse100,aex` | Comma-separated list of active index fetchers |
 | `STOCKSCREEN_REFRESH_ON_STARTUP` | `true` | Fetch missing/stale symbol caches at startup |
 | `STOCKSCREEN_SYMBOL_REFRESH_INTERVAL_HOURS` | `24` | Cache TTL for symbol lists (hours) |
+| `STOCKSCREEN_EURONEXT_CACHE_TTL` | `604800` (7 days) | ISIN/ticker resolution cache TTL (seconds) |
+| `STOCKSCREEN_PALMARES_CACHE_TTL` | `86400` (24 h) | Palmares snapshot cache TTL (seconds) |
 
 ---
 
@@ -397,23 +441,46 @@ for stock in result["results"]:
 
 ```
 stockscreen/
-├── server.py                      # FastMCP tools → services
-├── config.py                      # Paths, logging, env overrides
-├── exceptions.py                  # StockscreenError, ValidationError, APIError
+├── server.py                          # FastMCP tools (thin wrappers over services)
+├── config.py                          # Paths, logging, env overrides, constants
+├── exceptions.py                      # StockscreenError, ValidationError, APIError
 ├── providers/
-│   ├── yahoo.py                   # YahooProvider — yfinance wrapper (async)
-│   ├── boursorama.py              # BoursoramaProvider — Boursorama scraper (async)
+│   ├── yahoo.py                       # YahooProvider — only file that imports yfinance
+│   ├── boursorama.py                  # BoursoramaProvider — Boursorama scraper (async)
+│   ├── euronext.py                    # EuronextProvider — bidirectional ISIN↔ticker
+│   ├── facade.py                      # MarketDataFacade — single entry point (Yahoo+Boursorama+Euronext)
+│   ├── boursorama_palmares.py         # BoursoramaPalmaresScaper — multi-page dividend ranking
 │   └── symbol_fetchers/
-│       ├── base.py                # BaseSymbolFetcher ABC + SymbolRecord
-│       ├── wikipedia.py           # SP500, Nasdaq100, CAC40, SBF120, DAX, FTSE100, AEX
-│       └── registry.py            # build_fetchers(["cac40", "sp500", ...])
-├── models/schemas.py              # Pydantic v2 validation + JSON encoder
+│       ├── base.py                    # BaseSymbolFetcher ABC + SymbolRecord
+│       ├── wikipedia.py               # SP500, Nasdaq100, CAC40, SBF120, DAX, FTSE100, AEX
+│       └── registry.py               # build_fetchers(["cac40", "sp500", ...])
+├── models/schemas.py                  # Pydantic v2 validation + StockscreenJSONEncoder
 ├── services/
-│   ├── screener.py                # ScreenerService (technical/fundamental/options/news/custom)
-│   ├── news.py                    # NewsService
-│   ├── watchlist.py               # WatchlistService
-│   └── symbol_service.py          # SymbolService — fetch/cache/refresh index symbol lists
-└── store/data_store.py            # ScreenerDataStore + DefaultSymbols (JSON persistence)
+│   ├── screener.py                    # ScreenerService (technical/fundamental/options/news/custom)
+│   ├── news.py                        # NewsService
+│   ├── watchlist.py                   # WatchlistService
+│   ├── symbol_service.py              # SymbolService — fetch/cache/refresh index symbol lists
+│   └── palmares_service.py            # PalmaresService — cache, filter, sort palmares
+└── store/
+    ├── data_store.py                  # ScreenerDataStore + DefaultSymbols (JSON persistence)
+    └── palmares_store.py              # PalmaresStore — palmares snapshot persistence
+```
+
+### Data flow
+
+```
+Claude Desktop
+  → FastMCP stdio
+    → @mcp.tool() (server.py)
+      → Service (screener / news / watchlist / palmares)
+        → MarketDataFacade
+          ├── YahooProvider  → yfinance → pandas → JSON
+          ├── BoursoramaProvider → HTTP scrape → merge (Boursorama-first for dividends)
+          └── EuronextProvider → HTTP → ISIN↔ticker resolution
+
+        → BoursoramaPalmaresScaper → HTTP multi-page scrape → PalmaresStore (JSON)
+        → SymbolService → Wikipedia fetchers → JSON cache
+        → ScreenerDataStore → JSON files (watchlists, screening results)
 ```
 
 Data is stored under `data/` (overridable with `STOCKSCREEN_DATA_PATH`).
@@ -424,15 +491,17 @@ Data is stored under `data/` (overridable with `STOCKSCREEN_DATA_PATH`).
 
 ```bash
 source venv/bin/activate
-pytest          # 290 tests, no network calls
+pytest          # ~290 tests, no network calls (all providers mocked)
 ```
 
 ---
 
 ## Limitations
 
-- **Yahoo Finance**: potential delays and rate limits; dividend data unreliable for non-US stocks
-- **Boursorama**: scraping-based — may break if Boursorama changes its HTML structure; Euronext-only for reliable data; requires ISIN (not ticker) as input
+- **Yahoo Finance**: potential delays and rate limits; dividend data unreliable for non-US stocks (mitigated by Boursorama enrichment)
+- **Boursorama**: scraping-based — may break if Boursorama changes its HTML structure; reliable data for Euronext Paris equities only
+- **Euronext provider**: coverage limited to equities listed on the 11 supported MIC exchanges; no US stocks
+- **Palmares**: scraping-based — covers only Euronext Paris equities; does not include sector or compartment data (not present in the palmares table)
 - Options data depends on market hours and symbol coverage
 - Symbol index lists (CAC 40, etc.) are fetched from Wikipedia — may lag a few days after constituent changes
 

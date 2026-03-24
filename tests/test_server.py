@@ -221,11 +221,13 @@ class TestGetPalmares:
         mock_svc = AsyncMock()
         snap = PalmaresSnapshot("2026-03-24T10:00:00", 3, 0, [])
         mock_svc.refresh = AsyncMock(return_value=snap)
+        mock_svc.get = AsyncMock(return_value=snap)
 
         with patch("stockscreen.server._palmares_svc", mock_svc):
             await get_palmares(force_refresh=True)
 
         mock_svc.refresh.assert_called_once()
+        mock_svc.get.assert_called_once()   # filters still applied after refresh
 
     async def test_parameters_forwarded_to_service(self):
         from stockscreen.server import get_palmares
