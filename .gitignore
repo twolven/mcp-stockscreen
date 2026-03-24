@@ -27,3 +27,4 @@ ENV/
 .vscode/
 *.log
 .mcp.json
+.claude/

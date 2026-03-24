@@ -3,7 +3,7 @@
 import datetime
 import logging
 
-from stockscreen.providers.yahoo import YahooProvider
+from stockscreen.providers.facade import MarketDataFacade
 
 logger = logging.getLogger("stockscreen-server-v1")
 
@@ -14,7 +14,7 @@ _KEY_EVENT_KEYWORDS = ("lawsuit", "investigation", "sec", "probe")
 class NewsService:
     """Service for fetching and screening stock news."""
 
-    def __init__(self, provider: YahooProvider):
+    def __init__(self, provider: MarketDataFacade):
         self.provider = provider
 
     async def get_news_data(self, symbol: str, days_back: int = 30) -> dict:

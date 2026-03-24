@@ -7,19 +7,27 @@ from mcp.server.fastmcp import FastMCP
 
 from stockscreen.config import (
     DEFAULT_DATA_PATH,
+    EURONEXT_CACHE_TTL_SECONDS,
+    PALMARES_CACHE_TTL_SECONDS,
     REFRESH_ON_STARTUP,
     SYMBOL_REFRESH_INTERVAL_HOURS,
     SYMBOL_SOURCES,
     setup_logging,
 )
 from stockscreen.exceptions import ValidationError
+from stockscreen.providers.boursorama import BoursoramaProvider
+from stockscreen.providers.euronext import EuronextProvider
+from stockscreen.providers.facade import MarketDataFacade
 from stockscreen.providers.symbol_fetchers.registry import build_fetchers
 from stockscreen.providers.yahoo import YahooProvider
+from stockscreen.providers.boursorama_palmares import BoursoramaPalmaresScaper
 from stockscreen.services.news import NewsService
+from stockscreen.services.palmares_service import PalmaresService
 from stockscreen.services.screener import ScreenerService
 from stockscreen.services.symbol_service import SymbolService
 from stockscreen.services.watchlist import WatchlistService
 from stockscreen.store.data_store import ScreenerDataStore
+from stockscreen.store.palmares_store import PalmaresStore
 
 logger = logging.getLogger("stockscreen-server-v1")
 
@@ -34,25 +42,42 @@ mcp = FastMCP("stockscreen")
 # ---------------------------------------------------------------------------
 
 
-def create_services() -> tuple[ScreenerService, WatchlistService, NewsService, SymbolService]:
+def create_services() -> tuple[
+    ScreenerService, WatchlistService, NewsService, SymbolService, PalmaresService
+]:
     """Instantiate and wire all services."""
-    provider = YahooProvider()
+    yahoo = YahooProvider()
+    boursorama = BoursoramaProvider(
+        cache_dir=DEFAULT_DATA_PATH,
+        cache_ttl_seconds=86400.0,
+    )
+    euronext = EuronextProvider(
+        cache_dir=DEFAULT_DATA_PATH,
+        cache_ttl_seconds=EURONEXT_CACHE_TTL_SECONDS,
+    )
+    facade = MarketDataFacade(yahoo=yahoo, boursorama=boursorama, euronext=euronext)
+
     store = ScreenerDataStore(base_path=DEFAULT_DATA_PATH)
-    news = NewsService(provider=provider)
+    news = NewsService(provider=facade)
     symbol_svc = SymbolService(
         fetchers=build_fetchers(SYMBOL_SOURCES),
         cache_dir=DEFAULT_DATA_PATH,
         refresh_interval_hours=SYMBOL_REFRESH_INTERVAL_HOURS,
     )
     screener = ScreenerService(
-        provider=provider, store=store, news_service=news, symbol_service=symbol_svc
+        provider=facade, store=store, news_service=news, symbol_service=symbol_svc
     )
     watchlist = WatchlistService(store=store)
-    return screener, watchlist, news, symbol_svc
+    palmares_svc = PalmaresService(
+        scraper=BoursoramaPalmaresScaper(),
+        store=PalmaresStore(base_path=DEFAULT_DATA_PATH),
+        cache_ttl_seconds=PALMARES_CACHE_TTL_SECONDS,
+    )
+    return screener, watchlist, news, symbol_svc, palmares_svc
 
 
 # Module-level singletons (replaced in tests via patch)
-_screener, _watchlist, _news, _symbol_svc = create_services()
+_screener, _watchlist, _news, _symbol_svc, _palmares_svc = create_services()
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +287,54 @@ async def refresh_symbols(category: str | None = None) -> dict:
         return {"error": str(e)}
     except Exception as e:
         logger.error(f"Unexpected error in refresh_symbols: {e}")
+        return {"error": f"Internal error: {e}"}
+
+
+@mcp.tool()
+async def get_palmares(
+    min_rendement: float | None = None,
+    max_rendement: float | None = None,
+    nom_contains: str | None = None,
+    limit: int = 50,
+    force_refresh: bool = False,
+) -> dict:
+    """Get the Boursorama dividend palmares — top yielding French equities.
+
+    Args:
+        min_rendement:  Minimum dividend yield in % (e.g. 3.0).
+        max_rendement:  Maximum dividend yield in %.
+        nom_contains:   Case-insensitive substring filter on company name.
+        limit:          Maximum number of entries to return (default 50, max 500).
+        force_refresh:  Force a fresh scrape even if the cache is still valid.
+
+    Returns:
+        Dict with keys:
+          fetched_at     — ISO datetime of the data snapshot.
+          total_entries  — Total entries before filtering.
+          returned       — Number of entries in this response.
+          entries        — List of dicts with code_bourso, nom, cours,
+                           dividendes [{annee, dividende, rendement}], isin.
+    """
+    try:
+        limit = max(1, min(limit, 500))
+        if force_refresh:
+            snap = await _palmares_svc.refresh()
+        else:
+            snap = await _palmares_svc.get(
+                min_rendement=min_rendement,
+                max_rendement=max_rendement,
+                nom_contains=nom_contains,
+                limit=limit,
+            )
+        from dataclasses import asdict
+        return {
+            "fetched_at": snap.fetched_at,
+            "total_entries": snap.total_entries,
+            "returned": len(snap.entries),
+            "entries": [asdict(e) for e in snap.entries],
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error in get_palmares: {e}")
         return {"error": f"Internal error: {e}"}
 
 

@@ -40,6 +40,22 @@ SYMBOL_REFRESH_INTERVAL_HOURS: float = float(
     os.environ.get("STOCKSCREEN_SYMBOL_REFRESH_INTERVAL_HOURS", "24")
 )
 
+# ---------------------------------------------------------------------------
+# Provider cache configuration
+# ---------------------------------------------------------------------------
+
+# Euronext ISIN↔ticker mapping cache TTL in seconds (default 7 days).
+# Override with STOCKSCREEN_EURONEXT_CACHE_TTL env var.
+EURONEXT_CACHE_TTL_SECONDS: float = float(
+    os.environ.get("STOCKSCREEN_EURONEXT_CACHE_TTL", str(7 * 86400))
+)
+
+# Boursorama palmarès dividendes cache TTL in seconds (default 24h).
+# Override with STOCKSCREEN_PALMARES_CACHE_TTL env var.
+PALMARES_CACHE_TTL_SECONDS: float = float(
+    os.environ.get("STOCKSCREEN_PALMARES_CACHE_TTL", "86400")
+)
+
 
 def migrate_legacy_data(target_path: str | None = None) -> None:
     """Migrate data from old CWD-based location to new package-relative location.

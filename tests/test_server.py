@@ -41,7 +41,7 @@ class TestServerInit:
         with patch("stockscreen.server.DEFAULT_DATA_PATH", str(tmp_path)):
             result = create_services()
         assert isinstance(result, tuple)
-        assert len(result) == 4  # screener, watchlist, news, symbol_svc
+        assert len(result) == 5  # screener, watchlist, news, symbol_svc, palmares_svc
 
 
 # ============================================================
@@ -183,3 +183,97 @@ class TestGetScreeningResult:
             result = await get_screening_result(name="nonexistent")
 
         assert "error" in result
+
+
+# ============================================================
+# 6. Tool routing — get_palmares
+# ============================================================
+
+class TestGetPalmares:
+    async def test_routes_to_palmares_service(self):
+        from stockscreen.server import get_palmares
+        from stockscreen.providers.boursorama_palmares import PalmaresEntry
+        from stockscreen.store.palmares_store import PalmaresSnapshot
+
+        mock_svc = AsyncMock()
+        snap = PalmaresSnapshot(
+            fetched_at="2026-03-24T10:00:00",
+            page_count=3,
+            total_entries=2,
+            entries=[
+                PalmaresEntry("1rPA", "Alpha", 50.0,
+                              [{"annee": "2025", "dividende": 4.0, "rendement": 8.0}]),
+            ],
+        )
+        mock_svc.get = AsyncMock(return_value=snap)
+
+        with patch("stockscreen.server._palmares_svc", mock_svc):
+            result = await get_palmares()
+
+        mock_svc.get.assert_called_once()
+        assert "entries" in result
+        assert result["total_entries"] == 2
+
+    async def test_force_refresh_calls_refresh(self):
+        from stockscreen.server import get_palmares
+        from stockscreen.store.palmares_store import PalmaresSnapshot
+
+        mock_svc = AsyncMock()
+        snap = PalmaresSnapshot("2026-03-24T10:00:00", 3, 0, [])
+        mock_svc.refresh = AsyncMock(return_value=snap)
+
+        with patch("stockscreen.server._palmares_svc", mock_svc):
+            await get_palmares(force_refresh=True)
+
+        mock_svc.refresh.assert_called_once()
+
+    async def test_parameters_forwarded_to_service(self):
+        from stockscreen.server import get_palmares
+        from stockscreen.store.palmares_store import PalmaresSnapshot
+
+        mock_svc = AsyncMock()
+        snap = PalmaresSnapshot("2026-03-24T10:00:00", 3, 0, [])
+        mock_svc.get = AsyncMock(return_value=snap)
+
+        with patch("stockscreen.server._palmares_svc", mock_svc):
+            await get_palmares(min_rendement=3.0, max_rendement=10.0,
+                               nom_contains="total", limit=25)
+
+        mock_svc.get.assert_called_once_with(
+            min_rendement=3.0,
+            max_rendement=10.0,
+            nom_contains="total",
+            limit=25,
+        )
+
+    async def test_error_returns_error_dict(self):
+        from stockscreen.server import get_palmares
+
+        mock_svc = AsyncMock()
+        mock_svc.get = AsyncMock(side_effect=Exception("scrape failed"))
+
+        with patch("stockscreen.server._palmares_svc", mock_svc):
+            result = await get_palmares()
+
+        assert "error" in result
+
+    async def test_returned_count_reflects_entries(self):
+        from stockscreen.server import get_palmares
+        from stockscreen.providers.boursorama_palmares import PalmaresEntry
+        from stockscreen.store.palmares_store import PalmaresSnapshot
+
+        mock_svc = AsyncMock()
+        entries = [
+            PalmaresEntry("1rPA", "Alpha", 50.0,
+                          [{"annee": "2025", "dividende": 4.0, "rendement": 8.0}]),
+            PalmaresEntry("1rPB", "Beta",  50.0,
+                          [{"annee": "2025", "dividende": 2.0, "rendement": 4.0}]),
+        ]
+        snap = PalmaresSnapshot("2026-03-24T10:00:00", 3, 10, entries)
+        mock_svc.get = AsyncMock(return_value=snap)
+
+        with patch("stockscreen.server._palmares_svc", mock_svc):
+            result = await get_palmares()
+
+        assert result["returned"] == 2
+        assert result["total_entries"] == 10

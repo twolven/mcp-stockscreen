@@ -5,7 +5,7 @@ import logging
 
 import pandas as pd
 
-from stockscreen.providers.yahoo import YahooProvider
+from stockscreen.providers.facade import MarketDataFacade
 from stockscreen.services.news import NewsService
 from stockscreen.store.data_store import ScreenerDataStore
 
@@ -43,7 +43,7 @@ class ScreenerService:
 
     def __init__(
         self,
-        provider: YahooProvider,
+        provider: MarketDataFacade,
         store: ScreenerDataStore,
         news_service: NewsService,
         symbol_service=None,   # SymbolService | None — optional to stay backwards-compatible
