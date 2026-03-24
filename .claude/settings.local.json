@@ -15,7 +15,10 @@
       "Bash(pytest tests/test_config.py -v)",
       "Bash(pytest tests/test_exceptions.py -v)",
       "Bash(pytest tests/test_schemas.py -v)",
-      "Bash(pytest tests/test_data_store.py -v)"
+      "Bash(pytest tests/test_data_store.py -v)",
+      "Bash(pytest tests/test_yahoo_provider.py -v)",
+      "Bash(pytest tests/test_news_service.py -v)",
+      "Bash(pytest tests/test_watchlist_service.py -v)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -110,7 +110,7 @@
 **Contenu** : classe `YahooProvider` qui encapsule tous les appels `yf.Ticker`
 **Source** : tous les appels `yf.Ticker(symbol)` dispersés dans `stockscreen.py`
 
-- [ ] Écrire `tests/test_yahoo_provider.py`
+- [x] Écrire `tests/test_yahoo_provider.py`
   - Test : `get_ticker_info(symbol)` retourne un dict
   - Test : `get_history(symbol, period)` retourne un DataFrame
   - Test : `get_option_chain(symbol, expiry)` retourne calls/puts
@@ -118,11 +118,11 @@
   - Test : `get_earnings_dates(symbol)` retourne le bon format
   - Test : les appels passent par `run_in_executor` (vrai async)
   - Test : retry avec backoff exponentiel sur erreur réseau
-- [ ] Créer `stockscreen/providers/yahoo.py`
+- [x] Créer `stockscreen/providers/yahoo.py`
   - `YahooProvider` avec méthodes async
   - `run_in_executor` pour chaque appel yfinance
-  - Décorateur `retry_on_error` intégré ici (pas sur le dispatcher MCP)
-- [ ] Lancer `pytest tests/test_yahoo_provider.py` — vert
+  - Décorateur `_retry` intégré ici (pas sur le dispatcher MCP)
+- [x] Lancer `pytest tests/test_yahoo_provider.py` — vert (16/16)
 
 ---
 
@@ -132,28 +132,28 @@
 **Contenu** : récupération, catégorisation et filtrage des news
 **Source** : `get_news_data()`, `run_news_screen()` de `stockscreen.py`
 
-- [ ] Écrire `tests/test_news_service.py`
+- [x] Écrire `tests/test_news_service.py`
   - Test : catégorisation des news (management, key_events, recent_news)
   - Test : filtrage par keywords, exclude_keywords, require_all
   - Test : filtrage par date (min_days, max_days)
   - Test : gestion des erreurs (pas de news, erreur API)
-- [ ] Créer `stockscreen/services/news.py`
+- [x] Créer `stockscreen/services/news.py`
   - Classe `NewsService` qui prend un `YahooProvider` en injection
   - Aucun import de `yfinance` direct
-- [ ] Lancer `pytest tests/test_news_service.py` — vert
+- [x] Lancer `pytest tests/test_news_service.py` — vert (12/12)
 
 ### 4.2 `stockscreen/services/watchlist.py` — Service watchlists
 **Contenu** : CRUD watchlists avec validation
 **Source** : branche `manage_watchlist` du `call_tool()` de `stockscreen.py`
 
-- [ ] Écrire `tests/test_watchlist_service.py`
+- [x] Écrire `tests/test_watchlist_service.py`
   - Test : create, get, update, delete
   - Test : validation du nom (via Pydantic)
   - Test : validation des symboles (via Pydantic)
   - Test : erreurs (watchlist not found, etc.)
-- [ ] Créer `stockscreen/services/watchlist.py`
+- [x] Créer `stockscreen/services/watchlist.py`
   - Classe `WatchlistService` qui prend un `DataStore` en injection
-- [ ] Lancer `pytest tests/test_watchlist_service.py` — vert
+- [x] Lancer `pytest tests/test_watchlist_service.py` — vert (13/13)
 
 ### 4.3 `stockscreen/services/screener.py` — Service screening unifié
 **Contenu** : screening technique, fondamental, options, custom — **unifié, sans duplication**
