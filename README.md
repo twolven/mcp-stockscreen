@@ -25,31 +25,87 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for stock scr
 
 ## Installation
 
-**Requirements**: Python 3.10+
+**Only prerequisite**: [uv](https://docs.astral.sh/uv/)
 
 ```bash
-git clone https://github.com/twolven/mcp-stockscreen.git
-cd mcp-stockscreen
-python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
-pip install -e .
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
+
+No Python installation required — uv manages it automatically.
 
 ---
 
 ## Connecting to Claude Code
 
-### Option 1 — `claude mcp add` (recommended)
+Three ways to wire the server, from simplest to most involved.
+
+### Option 1 — `uvx` from GitHub (no clone needed)
 
 ```bash
-# From the project directory, with venv activated:
-claude mcp add stockscreen -- /absolute/path/to/venv/bin/python -m stockscreen.server
+claude mcp add stockscreen -- uvx --from git+https://github.com/YOUR_USER/mcp-stockscreen stockscreen
 ```
 
-Or if the package is installed system-wide:
+Or via `.mcp.json` at the root of any project:
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/cyberbobjr/mcp-stockscreen", "stockscreen"]
+    }
+  }
+}
+```
+
+`uvx` fetches the package, creates an isolated environment, and launches the server — nothing to clone or install first.
+
+### Option 2 — `uvx` from PyPI (if published)
 
 ```bash
-claude mcp add stockscreen -- stockscreen
+claude mcp add stockscreen -- uvx mcp-stockscreen
+```
+
+Or via `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uvx",
+      "args": ["mcp-stockscreen"]
+    }
+  }
+}
+```
+
+### Option 3 — Local clone
+
+```bash
+git clone https://github.com/cyberbobjr/mcp-stockscreen.git
+cd mcp-stockscreen
+uv sync
+```
+
+```bash
+claude mcp add stockscreen -- uv --directory /absolute/path/to/mcp-stockscreen run stockscreen
+```
+
+Or via `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uv",
+      "args": ["--directory", "/absolute/path/to/mcp-stockscreen", "run", "stockscreen"]
+    }
+  }
+}
 ```
 
 Verify the server is registered:
@@ -58,22 +114,7 @@ Verify the server is registered:
 claude mcp list
 ```
 
-### Option 2 — `.mcp.json` in the project
-
-Create (or edit) `.mcp.json` at the root of any project where you want the tools available:
-
-```json
-{
-  "mcpServers": {
-    "stockscreen": {
-      "command": "/absolute/path/to/venv/bin/python",
-      "args": ["-m", "stockscreen.server"]
-    }
-  }
-}
-```
-
-> The server reads the `STOCKSCREEN_DATA_PATH` environment variable to override the default data directory. You can set it in the `env` block:
+> The server reads the `STOCKSCREEN_DATA_PATH` environment variable to override the default data directory. Add it to the `env` block of any config above:
 > ```json
 > "env": { "STOCKSCREEN_DATA_PATH": "/path/to/data" }
 > ```
@@ -82,14 +123,42 @@ Create (or edit) `.mcp.json` at the root of any project where you want the tools
 
 ## Connecting to Claude Desktop
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
+
+**From GitHub (no clone needed):**
 
 ```json
 {
   "mcpServers": {
     "stockscreen": {
-      "command": "/absolute/path/to/venv/bin/python",
-      "args": ["-m", "stockscreen.server"]
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/YOUR_USER/mcp-stockscreen", "stockscreen"]
+    }
+  }
+}
+```
+
+**From PyPI (if published):**
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uvx",
+      "args": ["mcp-stockscreen"]
+    }
+  }
+}
+```
+
+**From a local clone:**
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uv",
+      "args": ["--directory", "/absolute/path/to/mcp-stockscreen", "run", "stockscreen"]
     }
   }
 }
@@ -490,8 +559,9 @@ Data is stored under `data/` (overridable with `STOCKSCREEN_DATA_PATH`).
 ## Development
 
 ```bash
-source venv/bin/activate
-pytest          # ~290 tests, no network calls (all providers mocked)
+uv sync --group dev
+uv run pytest          # ~290 tests, no network calls (all providers mocked)
+uv run pytest tests/test_screener_service.py   # specific module
 ```
 
 ---

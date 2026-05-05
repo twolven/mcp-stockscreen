@@ -16,10 +16,10 @@ A separate `BoursoramaPalmaresScaper` feeds the `get_palmares` tool from the Bou
 ## Running
 
 ```bash
-pip install -r requirements.txt
-python -m stockscreen.server
-# or via entry point after pip install -e .
-stockscreen
+uv sync
+uv run stockscreen
+# or
+uv run python -m stockscreen.server
 ```
 
 The server communicates via stdio-based MCP protocol — it's designed to be launched by Claude Desktop, not run interactively.
@@ -119,9 +119,8 @@ Claude Desktop
 ## Testing
 
 ```bash
-source venv/bin/activate
-pytest            # runs all tests
-pytest tests/test_screener_service.py   # specific module
+uv run pytest            # runs all tests
+uv run pytest tests/test_screener_service.py   # specific module
 ```
 
 Test suite: ~290 tests covering all modules with async pytest (`asyncio_mode = "auto"`). All provider calls are mocked — no real network calls in the test suite.
