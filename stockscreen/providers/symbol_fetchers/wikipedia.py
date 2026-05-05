@@ -6,15 +6,30 @@ SymbolRecord instances.
 """
 
 import asyncio
+import io
 import logging
 from typing import ClassVar
 
 import pandas as pd
+import requests
 
 from stockscreen.exceptions import APIError
 from stockscreen.providers.symbol_fetchers.base import BaseSymbolFetcher, SymbolRecord
 
 logger = logging.getLogger("stockscreen-server-v1")
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (compatible; stockscreen/2.0; "
+        "+https://github.com/cyberbobjr/mcp-stockscreen)"
+    )
+}
+
+
+def _fetch_tables(url: str) -> list[pd.DataFrame]:
+    response = requests.get(url, headers=_HEADERS, timeout=30)
+    response.raise_for_status()
+    return pd.read_html(io.StringIO(response.text))
 
 
 class _WikipediaFetcher(BaseSymbolFetcher):
@@ -37,7 +52,7 @@ class _WikipediaFetcher(BaseSymbolFetcher):
         loop = asyncio.get_event_loop()
         try:
             tables: list[pd.DataFrame] = await loop.run_in_executor(
-                None, lambda: pd.read_html(self.source_url)
+                None, lambda: _fetch_tables(self.source_url)
             )
         except Exception as exc:
             raise APIError(f"[{self.name}] Failed to fetch {self.source_url}: {exc}") from exc
