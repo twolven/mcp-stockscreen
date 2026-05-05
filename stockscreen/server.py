@@ -527,7 +527,7 @@ def main() -> None:
 
     async def _run():
         await _startup()
-        mcp.run()
+        await mcp.run_stdio_async()
 
     asyncio.run(_run())
 
