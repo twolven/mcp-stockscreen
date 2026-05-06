@@ -26,3 +26,7 @@ ENV/
 .idea/
 .vscode/
 *.log
+.mcp.json
+.claude/
+stockscreen/data/
+opencode.json

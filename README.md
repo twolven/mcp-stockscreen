@@ -1,298 +1,626 @@
 # StockScreen MCP Server
 
-A Model Context Protocol (MCP) server providing comprehensive stock screening capabilities through Yahoo Finance. Enables LLMs to screen stocks based on technical, fundamental, and options criteria, with support for watchlist management and result storage.
+> **Fork notice**: This project is a heavily modified fork of [twolven/mcp-stockscreen](https://github.com/twolven/mcp-stockscreen). Major additions include Boursorama & Euronext providers, multi-transport support (SSE/Streamable HTTP), dividend palmarès, watchlist management, and comprehensive test coverage.
+
+A [Model Context Protocol](https://modelcontextprotocol.io) server for stock screening. Expose six tools to any MCP-compatible client (Claude Code, Claude Desktop…) to screen stocks on technical, fundamental, options, and news criteria, manage watchlists, retrieve dividend rankings, and persist results.
+
+**Data sources**
+- **Yahoo Finance** (`YahooProvider`) — primary source for price, volume, RSI, P/E, options chains, and news. Covers US and international equities and ETFs.
+- **Boursorama** (`BoursoramaProvider`) — supplementary provider for Euronext Paris data (cours, dividende, rendement, consensus analystes, historique CA/RN). Integrated transparently via `MarketDataFacade`.
+- **Euronext** (`EuronextProvider`) — bidirectional ISIN ↔ ticker resolution. Converts ISIN identifiers to Yahoo-compatible tickers (e.g. `FR0000131104` → `TTE.PA`).
+- **Boursorama Palmares** (`BoursoramaPalmaresScaper`) — scrapes the full multi-page Boursorama dividend ranking table (palmarès dividendes Euronext Paris).
+
+---
 
 ## Features
 
-### Stock Screening
-- Technical Analysis Screening
-  - Price and volume filters
-  - Moving averages (20, 50, 200 SMA)
-  - RSI indicators
-  - Average True Range (ATR)
-  - Trend analysis (1d, 5d, 20d changes)
-  - MA distance calculations
+| Category | Criteria |
+|---|---|
+| **Technical** | Price, volume, RSI(14), SMA 20/50/200, ATR%, trend changes |
+| **Fundamental** | Market cap, P/E, dividend yield, revenue growth, ETF metrics (AUM, expense ratio) |
+| **Options** | IV, option volume, put/call ratio, bid-ask spread, days-to-earnings |
+| **News** | Keyword matching, management changes, date range |
+| **Custom** | Combine any of the above — short-circuits on first rejection |
+| **Dividend palmares** | Boursorama top-yield ranking with multi-year dividend history, filterable by yield and name |
 
-- Fundamental Screening
-  - Market capitalization filters
-  - P/E ratio analysis
-  - Dividend yield criteria
-  - Revenue growth metrics
-  - ETF-specific metrics (AUM, expense ratio)
-
-- Options Screening
-  - Implied Volatility (IV) filters
-  - Options volume and open interest
-  - Put/Call ratio analysis
-  - Bid-ask spread evaluation
-  - Earnings date proximity checks
-
-### Data Management
-- Watchlist Creation and Management
-- Screening Result Storage
-- Default Symbol Categories
-  - Mega Cap (>$200B)
-  - Large Cap ($10B-$200B)
-  - Mid Cap ($2B-$10B)
-  - Small Cap ($300M-$2B)
-  - Micro Cap (<$300M)
-  - ETFs
+---
 
 ## Installation
 
-```bash
-# Install dependencies
-pip install -r requirements.txt
+**Only prerequisite**: [uv](https://docs.astral.sh/uv/)
 
-# Clone the repository
-git clone https://github.com/twolven/mcp-stockscreen.git
-cd mcp-stockscreen
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-## Usage
+No Python installation required — uv manages it automatically.
 
-1. Add to your Claude configuration:
-In your `claude-desktop-config.json`, add the following to the `mcpServers` section:
+---
+
+## Connecting to Claude Code
+
+Three ways to wire the server, from simplest to most involved.
+
+### Option 1 — `uvx` from GitHub (no clone needed)
+
+```bash
+claude mcp add stockscreen -- uvx --from git+https://github.com/cyberbobjr/mcp-stockscreen stockscreen
+```
+
+Or via `.mcp.json` at the root of any project:
 
 ```json
 {
-    "mcpServers": {
-        "stockscreen": {
-            "command": "python",
-            "args": ["path/to/stockscreen.py"]
-        }
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/cyberbobjr/mcp-stockscreen", "stockscreen"]
     }
+  }
 }
 ```
 
-Replace "path/to/stockscreen.py" with the full path to where you saved the stockscreen.py file.
+`uvx` fetches the package, creates an isolated environment, and launches the server — nothing to clone or install first.
+
+### Option 2 — `uvx` from PyPI (if published)
+
+```bash
+claude mcp add stockscreen -- uvx mcp-stockscreen
+```
+
+Or via `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uvx",
+      "args": ["mcp-stockscreen"]
+    }
+  }
+}
+```
+
+### Option 3 — Local clone
+
+```bash
+git clone https://github.com/cyberbobjr/mcp-stockscreen.git
+cd mcp-stockscreen
+uv sync
+```
+
+```bash
+claude mcp add stockscreen -- uv --directory /absolute/path/to/mcp-stockscreen run stockscreen
+```
+
+Or via `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uv",
+      "args": ["--directory", "/absolute/path/to/mcp-stockscreen", "run", "stockscreen"]
+    }
+  }
+}
+```
+
+Verify the server is registered:
+
+```bash
+claude mcp list
+```
+
+> The server reads the `STOCKSCREEN_DATA_PATH` environment variable to override the default data directory. Add it to the `env` block of any config above:
+> ```json
+> "env": { "STOCKSCREEN_DATA_PATH": "/path/to/data" }
+> ```
+
+---
+
+## Connecting to Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
+
+**From GitHub (no clone needed):**
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/cyberbobjr/mcp-stockscreen", "stockscreen"]
+    }
+  }
+}
+```
+
+**From PyPI (if published):**
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uvx",
+      "args": ["mcp-stockscreen"]
+    }
+  }
+}
+```
+
+**From a local clone:**
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uv",
+      "args": ["--directory", "/absolute/path/to/mcp-stockscreen", "run", "stockscreen"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop — the tools will appear in the tools panel.
+
+---
 
 ## Available Tools
 
-## Available Tools
+### `run_stock_screen`
 
-1. `run_stock_screen`
-   
-### Technical Screen Criteria
-```python
+Screen a list of stocks and return those that match all criteria.
+
+**Technical screen** — price, volume, momentum indicators:
+```json
 {
-    "screen_type": "technical",
-    "criteria": {
-        "min_price": float,              # Minimum stock price
-        "max_price": float,              # Maximum stock price
-        "min_volume": int,               # Minimum average volume
-        "above_sma_200": bool,           # Price above 200-day SMA
-        "above_sma_50": bool,            # Price above 50-day SMA
-        "min_rsi": float,                # Minimum RSI value
-        "max_rsi": float,                # Maximum RSI value
-        "max_atr_pct": float,            # Maximum ATR as percentage of price
-        "category": str                  # Optional: market cap category filter
-    },
-    "watchlist": str,                    # Optional: name of watchlist to screen
-    "save_result": str                   # Optional: name to save results
+  "screen_type": "technical",
+  "criteria": {
+    "symbols": ["AAPL", "MSFT", "GOOGL"],
+    "min_price": 10.0,
+    "max_price": 500.0,
+    "min_volume": 500000,
+    "min_rsi": 30,
+    "max_rsi": 70,
+    "above_sma_200": true,
+    "above_sma_50": false,
+    "max_atr_pct": 5.0,
+    "category": "large_cap"
+  }
 }
 ```
 
-### Fundamental Screen Criteria
-```python
+**Fundamental screen** — valuation and growth:
+```json
 {
-    "screen_type": "fundamental",
-    "criteria": {
-        "min_market_cap": float,         # Minimum market capitalization
-        "min_pe": float,                 # Minimum P/E ratio
-        "max_pe": float,                 # Maximum P/E ratio
-        "min_dividend": float,           # Minimum dividend yield (%)
-        "min_revenue_growth": float,     # Minimum revenue growth rate
-        "category": str,                 # Optional: market cap category filter
-        
-        # ETF-specific criteria
-        "min_aum": float,                # Minimum assets under management
-        "max_expense_ratio": float,      # Maximum expense ratio
-        "min_volume": float              # Minimum trading volume
-    },
-    "watchlist": str,                    # Optional: name of watchlist to screen
-    "save_result": str                   # Optional: name to save results
+  "screen_type": "fundamental",
+  "criteria": {
+    "min_market_cap": 10000000000,
+    "max_pe": 30,
+    "min_dividend": 2.0,
+    "min_revenue_growth": 0.05,
+    "category": "mega_cap"
+  }
 }
 ```
 
-### Options Screen Criteria
-```python
+**Options screen** — volatility and flow:
+```json
 {
-    "screen_type": "options",
-    "criteria": {
-        "min_iv": float,                 # Minimum implied volatility (%)
-        "max_iv": float,                 # Maximum implied volatility (%)
-        "min_option_volume": int,        # Minimum options volume
-        "min_put_call_ratio": float,     # Minimum put/call ratio
-        "max_spread": float,             # Maximum bid-ask spread (%)
-        "min_days_to_earnings": int,     # Minimum days until earnings
-        "max_days_to_earnings": int,     # Maximum days until earnings
-        "category": str                  # Optional: market cap category filter
-    },
-    "watchlist": str,                    # Optional: name of watchlist to screen
-    "save_result": str                   # Optional: name to save results
+  "screen_type": "options",
+  "criteria": {
+    "min_iv": 20,
+    "max_iv": 80,
+    "min_option_volume": 5000,
+    "min_put_call_ratio": 0.5,
+    "max_spread": 10.0,
+    "min_days_to_earnings": 7,
+    "max_days_to_earnings": 30
+  }
 }
 ```
 
-### News Screen Criteria
-```python
+**News screen** — keyword and event matching:
+```json
 {
-    "screen_type": "news",
-    "criteria": {
-        "keywords": List[str],           # Keywords to search for in news
-        "exclude_keywords": List[str],    # Keywords to exclude from results
-        "min_days": int,                 # Minimum days back to search
-        "max_days": int,                 # Maximum days back to search
-        "management_changes": bool,       # Filter for management changes
-        "require_all_keywords": bool,     # Require all keywords to match
-        "category": str                  # Optional: market cap category filter
-    },
-    "watchlist": str,                    # Optional: name of watchlist to screen
-    "save_result": str                   # Optional: name to save results
-}
-
-```
-
-### Custom Screen Criteria
-```python
-{
-    "screen_type": "custom",
-    "criteria": {
-        "category": str,                 # Optional: market cap category filter
-        "technical": {
-            # Any technical criteria from above
-        },
-        "fundamental": {
-            # Any fundamental criteria from above
-        },
-        "options": {
-            # Any options criteria from above
-        },
-        "news": {
-            # Any news criteria from above
-        }
-    },
-    "watchlist": str,                    # Optional: name of watchlist to screen
-    "save_result": str                   # Optional: name to save results
+  "screen_type": "news",
+  "criteria": {
+    "keywords": ["acquisition", "merger"],
+    "exclude_keywords": ["lawsuit"],
+    "require_all_keywords": false,
+    "min_days": 0,
+    "max_days": 14,
+    "management_changes": false
+  }
 }
 ```
 
-### Category Values
-Ava1ilable market cap categories for filtering:
-- "mega_cap": >$200B
-- "large_cap": $10B-$200B
-- "mid_cap": $2B-$10B
-- "small_cap": $300M-$2B
-- "micro_cap": <$300M
-- "etf": ETF instruments
-
-2. `manage_watchlist`
-```python
+**Custom screen** — combine any criteria (short-circuits on first rejection):
+```json
 {
-    "action": str,                       # Required: "create", "update", "delete", "get"
-    "name": str,                         # Required: watchlist name (1-50 chars, alphanumeric with _ -)
-    "symbols": List[str]                 # Required for create/update: list of stock symbols
+  "screen_type": "custom",
+  "criteria": {
+    "symbols": ["AAPL", "MSFT", "GOOGL", "META", "AMZN"],
+    "technical": { "above_sma_200": true, "max_rsi": 65 },
+    "fundamental": { "min_market_cap": 100000000000, "max_pe": 30 }
+  }
 }
 ```
 
-3. `get_screening_result`
-```python
+**Additional parameters:**
+- `watchlist` (string) — use a saved watchlist as the symbol source
+- `save_result` (string) — persist the result under this name for later retrieval
+
+**Response:**
+```json
 {
-    "name": str                          # Required: name of saved screening result
+  "screen_type": "technical",
+  "criteria": {},
+  "matches": 2,
+  "results": [
+    {
+      "symbol": "AAPL",
+      "price": 175.0,
+      "volume": 55000000,
+      "rsi": 52.3,
+      "sma_20": 172.0,
+      "sma_50": 168.0,
+      "sma_200": 155.0,
+      "atr": 3.2,
+      "atr_pct": 1.83,
+      "price_changes": { "1d": 0.5, "5d": 2.1, "20d": 4.8 },
+      "ma_distances": { "pct_from_20sma": 1.7, "pct_from_50sma": 4.2, "pct_from_200sma": 12.9 }
+    }
+  ],
+  "rejected": [
+    { "symbol": "XYZ", "rejection_reasons": ["RSI 78.2 > max_rsi 70"] }
+  ],
+  "timestamp": "2026-03-24T10:00:00"
 }
 ```
 
-## Response Formats
+---
 
-### Technical Screen Response
-```python
+### `get_stock_news`
+
+Get recent news and company updates for a single ticker.
+
+```
+symbol: "AAPL"         # US ticker, or "TTE.PA" for Euronext Paris, "DBK.DE" for Xetra, etc.
+days_back: 30          # default 30, max ~90
+```
+
+Returns:
+- `recent_news` — all articles within the date window (title, publisher, published, summary, url)
+- `key_events` — subset matching regulatory/legal keywords (SEC, lawsuit, investigation…)
+- `management_changes` — subset matching executive keywords (CEO, CFO, chairman…)
+- `current_management` — company officers from Yahoo
+- `company_info` — sector, industry, country, website, employees, marketCap
+
+---
+
+### `manage_watchlist`
+
+Create, update, delete, or retrieve a named watchlist.
+
+| action | description | requires `symbols` |
+|---|---|---|
+| `create` | create new watchlist | yes |
+| `update` | replace symbols | yes |
+| `get` | return symbol list | no |
+| `delete` | remove watchlist | no |
+
+```
+action: "create"
+name: "cac-picks"                        # 1–50 chars, alphanumeric + _ and -
+symbols: ["TTE.PA", "AIR.PA", "MC.PA"]
+```
+
+Typical workflow — create a watchlist, then screen it:
+```json
+// 1. Save the list once
+{ "action": "create", "name": "cac-picks", "symbols": ["TTE.PA", "AIR.PA", "MC.PA"] }
+
+// 2. Screen it any time
+{ "screen_type": "fundamental", "criteria": { "min_dividend": 3.0 }, "watchlist": "cac-picks" }
+```
+
+---
+
+### `get_screening_result`
+
+Retrieve a result previously saved via `run_stock_screen`'s `save_result` parameter.
+
+```
+name: "cac40-div-2026-03"
+```
+
+Returns the full original screening result dict (screen_type, criteria, matches, results, rejected, timestamp), or `{"error": "..."}` if not found.
+
+---
+
+### `get_palmares`
+
+Get the Boursorama dividend palmares — French equities ranked by dividend yield, scraped from [Boursorama palmarès dividendes](https://www.boursorama.com/bourse/actions/palmares/dividendes/).
+
+Results are sorted by best rendement descending. The snapshot is cached for 24 h.
+
+```
+min_rendement: 3.0       # minimum yield in % (optional)
+max_rendement: 10.0      # maximum yield in % (optional)
+nom_contains: "total"    # case-insensitive name filter (optional)
+limit: 50                # max entries returned, capped at 500 (default 50)
+force_refresh: false     # force a fresh scrape (default false)
+```
+
+**Response:**
+```json
 {
-    "screen_type": "technical",
-    "criteria": dict,                    # Original criteria used
-    "matches": int,                      # Number of matching stocks
-    "results": [                         # List of matching stocks
-        {
-            "symbol": str,
-            "price": float,
-            "volume": float,
-            "rsi": float,
-            "sma_20": float,
-            "sma_50": float,
-            "sma_200": float,
-            "atr": float,
-            "atr_pct": float,
-            "price_changes": {
-                "1d": float,             # 1-day price change %
-                "5d": float,             # 5-day price change %
-                "20d": float             # 20-day price change %
-            },
-            "ma_distances": {
-                "pct_from_20sma": float,
-                "pct_from_50sma": float,
-                "pct_from_200sma": float
-            }
-        }
-    ],
-    "rejected": [                        # List of stocks that didn't match
-        {
-            "symbol": str,
-            "rejection_reasons": List[str]
-        }
-    ],
-    "timestamp": str
+  "fetched_at": "2026-03-24T10:00:00",
+  "total_entries": 312,
+  "returned": 20,
+  "entries": [
+    {
+      "code_bourso": "1rTTE",
+      "nom": "TotalEnergies SE",
+      "cours": 62.5,
+      "isin": null,
+      "dividendes": [
+        { "annee": "2025", "dividende": 3.22, "rendement": 5.15 },
+        { "annee": "2026", "dividende": 3.40, "rendement": 5.44 }
+      ]
+    }
+  ]
 }
 ```
-## Usage Prompt for Claude
 
-"I've enabled the stockscreen tools which provide stock screening capabilities. You can use three main functions:
+**Typical workflow — palmares → technical cross-check:**
+```json
+// 1. Get top 30 high-yield French stocks
+get_palmares(min_rendement=5.0, limit=30)
 
-1. Screen stocks with various criteria types:
-   - Technical: Price, volume, RSI, moving averages, ATR
-   - Fundamental: Market cap, P/E, dividends, growth
-   - Options: IV, volume, earnings dates
-   - Custom: Combine multiple criteria types
+// 2. Cross-check technicals on the results
+run_stock_screen(
+  screen_type="technical",
+  criteria={"symbols": ["1rTTE", "1rMC", ...], "above_sma_200": true}
+)
+```
 
-2. Manage watchlists:
-   - Create and update symbol lists
-   - Delete existing watchlists
-   - Retrieve watchlist contents
+> **Note:** `code_bourso` values (e.g. `1rTTE`) work as screening symbols when Boursorama data is available through the facade. For Yahoo-based screening, resolve to the Yahoo ticker first (e.g. `TTE.PA`).
 
-3. Access saved screening results:
-   - Load previous screen results
-   - Review matched symbols and criteria
+---
 
-All functions include error handling, detailed market data, and comprehensive responses."
+### `refresh_symbols`
 
-## Requirements
+Force a refresh of the cached symbol lists for one or all index categories. Useful after a recent constituent change or when a screening run returned fewer symbols than expected.
 
-- Python 3.12+
-- MCP Server
-- yfinance
-- pandas
-- numpy
-- asyncio
+```
+category: "cac40"   # or omit to refresh all active sources at once
+```
+
+Supported categories: `sp500`, `nasdaq100`, `cac40`, `sbf120`, `dax`, `ftse100`, `aex`.
+
+Returns `{ "cac40": 40 }` (category → number of symbols fetched), or `{ "cac40": { "error": "..." } }` on failure.
+
+---
+
+## Symbol categories
+
+Use the `category` key in criteria to screen against a built-in index universe. Symbol lists are fetched from Wikipedia and cached locally (TTL configurable, default 24 h).
+
+**Market-cap buckets** (US indices — S&P 500 + Nasdaq 100 combined):
+
+| value | market cap |
+|---|---|
+| `mega_cap` | > $200 B |
+| `large_cap` | $10 B – $200 B |
+| `mid_cap` | $2 B – $10 B |
+| `small_cap` | $300 M – $2 B |
+| `micro_cap` | < $300 M |
+| `etf` | ETFs |
+
+**Index categories** (full constituent list, tickers with exchange suffix):
+
+| value | index | exchange suffix |
+|---|---|---|
+| `sp500` | S&P 500 | *(none)* |
+| `nasdaq100` | Nasdaq 100 | *(none)* |
+| `cac40` | CAC 40 | `.PA` |
+| `sbf120` | SBF 120 | `.PA` |
+| `dax` | DAX | `.DE` |
+| `ftse100` | FTSE 100 | `.L` |
+| `aex` | AEX | `.AS` |
+
+Example — screen all CAC 40 stocks for dividend yield ≥ 3%:
+```json
+{
+  "screen_type": "fundamental",
+  "criteria": { "category": "cac40", "min_dividend": 3.0 }
+}
+```
+
+---
+
+## Data sources
+
+### Yahoo Finance (primary — all screening tools)
+
+All screening tools use `YahooProvider` wrapped by `MarketDataFacade`, which adds:
+- True async via `asyncio.run_in_executor`
+- Exponential-backoff retry (3 attempts)
+- Automatic Boursorama enrichment for dividend/yield fields
+
+**Known limitation**: `dividendYield` from Yahoo is inconsistent for non-US stocks. The facade overrides it with Boursorama data when available.
+
+### Boursorama (dividends + cours — Euronext Paris)
+
+`BoursoramaProvider` scrapes Boursorama for reliable Euronext dividend data. It is called automatically by `MarketDataFacade` for every quote — Boursorama is tried first for `dividende`, `rendement`, `last_dividend_date`, `consensus`, and `performance`; Yahoo is used as fallback.
+
+Accepts either ISIN (e.g. `FR0000131104`) or Boursorama code (e.g. `1rTTE`) as input. Cache: one JSON file per ticker in `data/`, TTL 24 h.
+
+**`BoursoramaQuote` fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `isin` | str | ISIN or code used for the lookup |
+| `code_bourso` | str | Boursorama internal code (e.g. `1rTTE`) |
+| `nom` | str | Company name |
+| `lien` | str | URL of the Boursorama page |
+| `cours` | float \| None | Last price |
+| `dividende` | float \| None | Annual dividend (EUR) |
+| `rendement` | float \| None | Yield `dividende / cours × 100` (%) |
+| `last_dividend_date` | str \| None | Last detachment date (ISO) |
+| `consensus` | str \| None | Analyst consensus label |
+| `performance` | list[dict] | `[{annee, ca, rn, marge}]` per year |
+| `cached_at` | str | ISO timestamp of last fetch |
+
+### Euronext (ISIN ↔ ticker resolution)
+
+`EuronextProvider` resolves identifiers bidirectionally:
+- `resolve_ticker(isin)` → `EuronextRecord` (with `yahoo_ticker` like `TTE.PA`)
+- `resolve_isin(ticker)` → `EuronextRecord` (with `isin` like `FR0000131104`)
+
+Cache is shared between both directions: resolving a ticker also caches the result under the ISIN key. TTL: 7 days (configurable via `STOCKSCREEN_EURONEXT_CACHE_TTL`).
+
+Supported exchange suffixes: `.PA` (Euronext Paris), `.DE` (Xetra), `.L` (LSE), `.AS` (Amsterdam), `.MI` (Milan), `.MC` (Madrid), `.BR` (Brussels), `.LS` (Lisbon), `.HE` (Helsinki), `.ST` (Stockholm), `.OL` (Oslo).
+
+### Boursorama Palmares (dividend ranking)
+
+`BoursoramaPalmaresScaper` scrapes the full multi-page Boursorama dividend ranking table. Data includes up to 3 years of dividend history per stock. Cached as a single JSON snapshot (TTL: 24 h, configurable via `STOCKSCREEN_PALMARES_CACHE_TTL`).
+
+---
+
+## Transport
+
+The server supports three MCP transport protocols, selected via the `STOCKSCREEN_TRANSPORT` environment variable:
+
+| Protocol | Env value | Connection | Use case |
+|---|---|---|---|
+| **Stdio** | `stdio` (default) | stdin/stdout | Claude Desktop, Claude Code, local clients |
+| **SSE** | `sse` | HTTP Server-Sent Events | Legacy HTTP-based MCP clients |
+| **Streamable HTTP** | `streamable-http` | HTTP (modern standard) | Web deployments, reverse proxy, remote clients |
+
+For HTTP-based transports (`sse`, `streamable-http`), the server listens on a configurable host/port:
+
+```bash
+# Streamable HTTP on port 9000
+STOCKSCREEN_TRANSPORT=streamable-http STOCKSCREEN_PORT=9000 uv run stockscreen
+
+# SSE on all interfaces, port 8080
+STOCKSCREEN_TRANSPORT=sse STOCKSCREEN_HOST=0.0.0.0 STOCKSCREEN_PORT=8080 uv run stockscreen
+```
+
+When using HTTP transports, add the transport/env vars to the client config:
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/mcp-stockscreen", "run", "stockscreen"],
+      "env": {
+        "STOCKSCREEN_TRANSPORT": "streamable-http",
+        "STOCKSCREEN_PORT": "9000"
+      }
+    }
+  }
+}
+```
+
+---
+
+## Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `STOCKSCREEN_DATA_PATH` | `stockscreen/data/` | Root directory for all stored data |
+| `STOCKSCREEN_TRANSPORT` | `stdio` | MCP transport: `stdio`, `sse`, or `streamable-http` |
+| `STOCKSCREEN_HOST` | `127.0.0.1` | Host for HTTP transports |
+| `STOCKSCREEN_PORT` | `8000` | Port for HTTP transports |
+| `STOCKSCREEN_SYMBOL_SOURCES` | `sp500,nasdaq100,cac40,sbf120,dax,ftse100,aex` | Comma-separated list of active index fetchers |
+| `STOCKSCREEN_REFRESH_ON_STARTUP` | `true` | Fetch missing/stale symbol caches at startup |
+| `STOCKSCREEN_SYMBOL_REFRESH_INTERVAL_HOURS` | `24` | Cache TTL for symbol lists (hours) |
+| `STOCKSCREEN_EURONEXT_CACHE_TTL` | `604800` (7 days) | ISIN/ticker resolution cache TTL (seconds) |
+| `STOCKSCREEN_PALMARES_CACHE_TTL` | `86400` (24 h) | Palmares snapshot cache TTL (seconds) |
+
+---
+
+## Architecture
+
+```
+stockscreen/
+├── server.py                          # FastMCP tools (thin wrappers over services)
+├── config.py                          # Paths, logging, env overrides, constants
+├── exceptions.py                      # StockscreenError, ValidationError, APIError
+├── providers/
+│   ├── yahoo.py                       # YahooProvider — only file that imports yfinance
+│   ├── boursorama.py                  # BoursoramaProvider — Boursorama scraper (async)
+│   ├── euronext.py                    # EuronextProvider — bidirectional ISIN↔ticker
+│   ├── facade.py                      # MarketDataFacade — single entry point (Yahoo+Boursorama+Euronext)
+│   ├── boursorama_palmares.py         # BoursoramaPalmaresScaper — multi-page dividend ranking
+│   └── symbol_fetchers/
+│       ├── base.py                    # BaseSymbolFetcher ABC + SymbolRecord
+│       ├── wikipedia.py               # SP500, Nasdaq100, CAC40, SBF120, DAX, FTSE100, AEX
+│       └── registry.py               # build_fetchers(["cac40", "sp500", ...])
+├── models/schemas.py                  # Pydantic v2 validation + StockscreenJSONEncoder
+├── services/
+│   ├── screener.py                    # ScreenerService (technical/fundamental/options/news/custom)
+│   ├── news.py                        # NewsService
+│   ├── watchlist.py                   # WatchlistService
+│   ├── symbol_service.py              # SymbolService — fetch/cache/refresh index symbol lists
+│   └── palmares_service.py            # PalmaresService — cache, filter, sort palmares
+└── store/
+    ├── data_store.py                  # ScreenerDataStore + DefaultSymbols (JSON persistence)
+    └── palmares_store.py              # PalmaresStore — palmares snapshot persistence
+```
+
+### Data flow
+
+```
+Client (Claude Desktop / Claude Code / HTTP)
+  → MCP protocol (stdio / SSE / Streamable HTTP)
+    → @mcp.tool() (server.py)
+      → Service (screener / news / watchlist / palmares)
+        → MarketDataFacade
+          ├── YahooProvider  → yfinance → pandas → JSON
+          ├── BoursoramaProvider → HTTP scrape → merge (Boursorama-first for dividends)
+          └── EuronextProvider → HTTP → ISIN↔ticker resolution
+
+        → BoursoramaPalmaresScaper → HTTP multi-page scrape → PalmaresStore (JSON)
+        → SymbolService → Wikipedia fetchers → JSON cache
+        → ScreenerDataStore → JSON files (watchlists, screening results)
+```
+
+Data is stored under `data/` (overridable with `STOCKSCREEN_DATA_PATH`).
+
+---
+
+## Development
+
+```bash
+uv sync --group dev
+uv run pytest          # ~290 tests, no network calls (all providers mocked)
+uv run pytest tests/test_screener_service.py   # specific module
+```
+
+---
 
 ## Limitations
 
-- Data sourced from Yahoo Finance with potential delays
-- Rate limits based on Yahoo Finance API restrictions
-- Options data availability depends on market hours
-- Some financial metrics may be delayed or unavailable
+- **Yahoo Finance**: potential delays and rate limits; dividend data unreliable for non-US stocks (mitigated by Boursorama enrichment)
+- **Boursorama**: scraping-based — may break if Boursorama changes its HTML structure; reliable data for Euronext Paris equities only
+- **Euronext provider**: coverage limited to equities listed on the 11 supported MIC exchanges; no US stocks
+- **Palmares**: scraping-based — covers only Euronext Paris equities; does not include sector or compartment data (not present in the palmares table)
+- Options data depends on market hours and symbol coverage
+- Symbol index lists (CAC 40, etc.) are fetched from Wikipedia — may lag a few days after constituent changes
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Author
-
-Todd Wolven - (https://github.com/twolven)
-
-## Acknowledgments
-
-- Built with the Model Context Protocol (MCP) by Anthropic
-- Data provided by [Yahoo Finance](https://finance.yahoo.com/)
-- Developed for use with Anthropic's Claude
+MIT — see [LICENSE](LICENSE).
