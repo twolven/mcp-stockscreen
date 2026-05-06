@@ -1,6 +1,6 @@
 [project]
 name = "mcp-stockscreen"
-version = "2.0.0"
+version = "2.1.0"
 description = "MCP server for stock screening with Yahoo Finance"
 requires-python = ">=3.10"
 dependencies = [

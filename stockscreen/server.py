@@ -10,6 +10,9 @@ from stockscreen.config import (
     EURONEXT_CACHE_TTL_SECONDS,
     PALMARES_CACHE_TTL_SECONDS,
     REFRESH_ON_STARTUP,
+    STOCKSCREEN_HOST,
+    STOCKSCREEN_PORT,
+    STOCKSCREEN_TRANSPORT,
     SYMBOL_REFRESH_INTERVAL_HOURS,
     SYMBOL_SOURCES,
     setup_logging,
@@ -35,7 +38,7 @@ logger = logging.getLogger("stockscreen-server-v1")
 # FastMCP instance
 # ---------------------------------------------------------------------------
 
-mcp = FastMCP("stockscreen")
+mcp = FastMCP("stockscreen", host=STOCKSCREEN_HOST, port=STOCKSCREEN_PORT)
 
 # ---------------------------------------------------------------------------
 # Service factory (overridable in tests via patch)
@@ -523,11 +526,16 @@ async def _startup() -> None:
 
 def main() -> None:
     setup_logging()
-    logger.info("Starting Stockscreen MCP server…")
+    logger.info(f"Starting Stockscreen MCP server (transport: {STOCKSCREEN_TRANSPORT})…")
 
     async def _run():
         await _startup()
-        await mcp.run_stdio_async()
+        if STOCKSCREEN_TRANSPORT == "sse":
+            await mcp.run_sse_async()
+        elif STOCKSCREEN_TRANSPORT == "streamable-http":
+            await mcp.run_streamable_http_async()
+        else:
+            await mcp.run_stdio_async()
 
     asyncio.run(_run())
 

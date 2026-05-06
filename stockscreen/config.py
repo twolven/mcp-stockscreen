@@ -41,6 +41,21 @@ SYMBOL_REFRESH_INTERVAL_HOURS: float = float(
 )
 
 # ---------------------------------------------------------------------------
+# Transport configuration
+# ---------------------------------------------------------------------------
+
+# MCP transport protocol: "stdio", "sse", or "streamable-http".
+# Override with STOCKSCREEN_TRANSPORT env var.
+STOCKSCREEN_TRANSPORT: str = os.environ.get(
+    "STOCKSCREEN_TRANSPORT", "stdio"
+).lower()
+
+# Host and port for HTTP-based transports (sse, streamable-http).
+# Override with STOCKSCREEN_HOST and STOCKSCREEN_PORT env vars.
+STOCKSCREEN_HOST: str = os.environ.get("STOCKSCREEN_HOST", "127.0.0.1")
+STOCKSCREEN_PORT: int = int(os.environ.get("STOCKSCREEN_PORT", "8000"))
+
+# ---------------------------------------------------------------------------
 # Provider cache configuration
 # ---------------------------------------------------------------------------
 

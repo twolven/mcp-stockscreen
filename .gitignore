@@ -28,3 +28,4 @@ ENV/
 *.log
 .mcp.json
 .claude/
+stockscreen/data/

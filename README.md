@@ -493,11 +493,53 @@ Supported exchange suffixes: `.PA` (Euronext Paris), `.DE` (Xetra), `.L` (LSE), 
 
 ---
 
+## Transport
+
+The server supports three MCP transport protocols, selected via the `STOCKSCREEN_TRANSPORT` environment variable:
+
+| Protocol | Env value | Connection | Use case |
+|---|---|---|---|
+| **Stdio** | `stdio` (default) | stdin/stdout | Claude Desktop, Claude Code, local clients |
+| **SSE** | `sse` | HTTP Server-Sent Events | Legacy HTTP-based MCP clients |
+| **Streamable HTTP** | `streamable-http` | HTTP (modern standard) | Web deployments, reverse proxy, remote clients |
+
+For HTTP-based transports (`sse`, `streamable-http`), the server listens on a configurable host/port:
+
+```bash
+# Streamable HTTP on port 9000
+STOCKSCREEN_TRANSPORT=streamable-http STOCKSCREEN_PORT=9000 uv run stockscreen
+
+# SSE on all interfaces, port 8080
+STOCKSCREEN_TRANSPORT=sse STOCKSCREEN_HOST=0.0.0.0 STOCKSCREEN_PORT=8080 uv run stockscreen
+```
+
+When using HTTP transports, add the transport/env vars to the client config:
+
+```json
+{
+  "mcpServers": {
+    "stockscreen": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/mcp-stockscreen", "run", "stockscreen"],
+      "env": {
+        "STOCKSCREEN_TRANSPORT": "streamable-http",
+        "STOCKSCREEN_PORT": "9000"
+      }
+    }
+  }
+}
+```
+
+---
+
 ## Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
 | `STOCKSCREEN_DATA_PATH` | `stockscreen/data/` | Root directory for all stored data |
+| `STOCKSCREEN_TRANSPORT` | `stdio` | MCP transport: `stdio`, `sse`, or `streamable-http` |
+| `STOCKSCREEN_HOST` | `127.0.0.1` | Host for HTTP transports |
+| `STOCKSCREEN_PORT` | `8000` | Port for HTTP transports |
 | `STOCKSCREEN_SYMBOL_SOURCES` | `sp500,nasdaq100,cac40,sbf120,dax,ftse100,aex` | Comma-separated list of active index fetchers |
 | `STOCKSCREEN_REFRESH_ON_STARTUP` | `true` | Fetch missing/stale symbol caches at startup |
 | `STOCKSCREEN_SYMBOL_REFRESH_INTERVAL_HOURS` | `24` | Cache TTL for symbol lists (hours) |
@@ -538,8 +580,8 @@ stockscreen/
 ### Data flow
 
 ```
-Claude Desktop
-  → FastMCP stdio
+Client (Claude Desktop / Claude Code / HTTP)
+  → MCP protocol (stdio / SSE / Streamable HTTP)
     → @mcp.tool() (server.py)
       → Service (screener / news / watchlist / palmares)
         → MarketDataFacade
