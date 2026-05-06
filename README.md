@@ -48,7 +48,7 @@ Three ways to wire the server, from simplest to most involved.
 ### Option 1 — `uvx` from GitHub (no clone needed)
 
 ```bash
-claude mcp add stockscreen -- uvx --from git+https://github.com/YOUR_USER/mcp-stockscreen stockscreen
+claude mcp add stockscreen -- uvx --from git+https://github.com/cyberbobjr/mcp-stockscreen stockscreen
 ```
 
 Or via `.mcp.json` at the root of any project:
@@ -134,7 +134,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
   "mcpServers": {
     "stockscreen": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/YOUR_USER/mcp-stockscreen", "stockscreen"]
+      "args": ["--from", "git+https://github.com/cyberbobjr/mcp-stockscreen", "stockscreen"]
     }
   }
 }

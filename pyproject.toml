@@ -1,6 +1,6 @@
 [project]
 name = "mcp-stockscreen"
-version = "2.1.0"
+version = "2.1.1"
 description = "MCP server for stock screening — technical, fundamental, options, news screening, watchlists and dividend rankings"
 readme = "README.md"
 license = { text = "MIT" }
