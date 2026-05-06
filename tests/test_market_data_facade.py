@@ -384,6 +384,76 @@ class TestDelegatedMethods:
         assert "dividende" in result
         assert "marketCap" in result
 
+    async def test_isin_get_history_resolves_via_euronext(self):
+        """ISIN → get_history uses resolved yahoo_ticker, not raw ISIN."""
+        euronext = AsyncMock()
+        euronext.resolve_ticker.return_value = _make_euronext_record()
+        yahoo = AsyncMock()
+        expected_df = pd.DataFrame({"Close": [59.0, 60.0]})
+        yahoo.get_history.return_value = expected_df
+
+        facade = _make_facade(yahoo=yahoo, euronext=euronext)
+        result = await facade.get_history("FR0000131104", period="1y")
+
+        euronext.resolve_ticker.assert_called_once_with("FR0000131104")
+        yahoo.get_history.assert_called_once_with("TTE.PA", period="1y")
+        assert result is expected_df
+
+    async def test_isin_get_news_resolves_via_euronext(self):
+        """ISIN → get_news uses resolved yahoo_ticker, not raw ISIN."""
+        euronext = AsyncMock()
+        euronext.resolve_ticker.return_value = _make_euronext_record()
+        yahoo = AsyncMock()
+        yahoo.get_news.return_value = [{"title": "TTE news"}]
+
+        facade = _make_facade(yahoo=yahoo, euronext=euronext)
+        result = await facade.get_news("FR0000131104")
+
+        euronext.resolve_ticker.assert_called_once_with("FR0000131104")
+        yahoo.get_news.assert_called_once_with("TTE.PA")
+        assert result == [{"title": "TTE news"}]
+
+    async def test_isin_get_option_chain_resolves_via_euronext(self):
+        """ISIN → get_option_chain uses resolved yahoo_ticker, not raw ISIN."""
+        euronext = AsyncMock()
+        euronext.resolve_ticker.return_value = _make_euronext_record()
+        yahoo = AsyncMock()
+        yahoo.get_option_chain.return_value = MagicMock()
+
+        facade = _make_facade(yahoo=yahoo, euronext=euronext)
+        await facade.get_option_chain("FR0000131104", "2026-06-20")
+
+        euronext.resolve_ticker.assert_called_once_with("FR0000131104")
+        yahoo.get_option_chain.assert_called_once_with("TTE.PA", "2026-06-20")
+
+    async def test_isin_get_option_expirations_resolves_via_euronext(self):
+        """ISIN → get_option_expirations uses resolved yahoo_ticker, not raw ISIN."""
+        euronext = AsyncMock()
+        euronext.resolve_ticker.return_value = _make_euronext_record()
+        yahoo = AsyncMock()
+        yahoo.get_option_expirations.return_value = ("2026-06-20", "2026-09-19")
+
+        facade = _make_facade(yahoo=yahoo, euronext=euronext)
+        result = await facade.get_option_expirations("FR0000131104")
+
+        euronext.resolve_ticker.assert_called_once_with("FR0000131104")
+        yahoo.get_option_expirations.assert_called_once_with("TTE.PA")
+        assert "2026-06-20" in result
+
+    async def test_isin_get_earnings_dates_resolves_via_euronext(self):
+        """ISIN → get_earnings_dates uses resolved yahoo_ticker, not raw ISIN."""
+        euronext = AsyncMock()
+        euronext.resolve_ticker.return_value = _make_euronext_record()
+        yahoo = AsyncMock()
+        yahoo.get_earnings_dates.return_value = {"next_earnings": None, "days_to_earnings": None}
+
+        facade = _make_facade(yahoo=yahoo, euronext=euronext)
+        result = await facade.get_earnings_dates("FR0000131104")
+
+        euronext.resolve_ticker.assert_called_once_with("FR0000131104")
+        yahoo.get_earnings_dates.assert_called_once_with("TTE.PA")
+        assert "next_earnings" in result
+
 
 # ---------------------------------------------------------------------------
 # 6. MarketDataFacade n'importe pas yfinance

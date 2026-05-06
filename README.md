@@ -1,5 +1,7 @@
 # StockScreen MCP Server
 
+> **Fork notice**: This project is a heavily modified fork of [twolven/mcp-stockscreen](https://github.com/twolven/mcp-stockscreen). Major additions include Boursorama & Euronext providers, multi-transport support (SSE/Streamable HTTP), dividend palmarès, watchlist management, and comprehensive test coverage.
+
 A [Model Context Protocol](https://modelcontextprotocol.io) server for stock screening. Expose six tools to any MCP-compatible client (Claude Code, Claude Desktop…) to screen stocks on technical, fundamental, options, and news criteria, manage watchlists, retrieve dividend rankings, and persist results.
 
 **Data sources**

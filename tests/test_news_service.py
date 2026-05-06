@@ -119,6 +119,26 @@ class TestGetNewsData:
         assert result["company_info"]["sector"] == "Technology"
         assert result["current_management"][0]["name"] == "Tim Cook"
 
+    async def test_news_with_none_title(self, news_service, mock_provider, sample_ticker_info):
+        """News items with None title should not crash categorization."""
+        now = datetime.datetime.now()
+        mock_provider.get_news = AsyncMock(return_value=[
+            {
+                "title": None,
+                "publisher": "Reuters",
+                "providerPublishTime": int((now - datetime.timedelta(days=2)).timestamp()),
+                "type": "STORY",
+                "summary": "Some summary.",
+            },
+        ])
+        mock_provider.get_ticker_info = AsyncMock(return_value=sample_ticker_info)
+
+        result = await news_service.get_news_data("AAPL")
+        # Should not crash, item falls through to recent_news
+        assert len(result["recent_news"]) == 1
+        assert result["key_events"] == []
+        assert result["management_changes"] == []
+
 
 # ============================================================
 # 2. screen_news — filtering
@@ -182,3 +202,22 @@ class TestScreenNews:
             ["AAPL"], {"max_days": 3}
         )
         assert result["screen_type"] == "news"
+
+    async def test_screen_news_with_none_fields(self, news_service):
+        """Screen news should not crash when title or summary is None."""
+        news_service.get_news_data = AsyncMock(return_value={
+            "recent_news": [
+                {
+                    "title": None,
+                    "summary": None,
+                    "published_at": datetime.datetime.now().isoformat(),
+                },
+            ],
+            "key_events": [],
+            "management_changes": [],
+            "company_info": {},
+        })
+
+        result = await news_service.screen_news(["AAPL"], {})
+        assert result["screen_type"] == "news"
+        assert result["matches"] == 1

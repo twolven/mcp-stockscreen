@@ -6,7 +6,7 @@ import os
 import time
 from typing import Optional
 
-from stockscreen.exceptions import APIError, ValidationError
+from stockscreen.exceptions import ValidationError
 from stockscreen.models.schemas import StockscreenJSONEncoder
 
 logger = logging.getLogger("stockscreen-server-v1")

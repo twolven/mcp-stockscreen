@@ -96,8 +96,8 @@ class BoursoramaPalmaresScaper:
     # Public API
     # ------------------------------------------------------------------
 
-    async def fetch_all(self) -> list[PalmaresEntry]:
-        """Scrape all pages and return the aggregated list of entries."""
+    async def fetch_all(self) -> tuple[list[PalmaresEntry], int]:
+        """Scrape all pages and return (entries, page_count)."""
         loop = asyncio.get_event_loop()
 
         # Page 1 — also used to detect total page count
@@ -107,7 +107,7 @@ class BoursoramaPalmaresScaper:
             )
         except Exception as exc:
             logger.error(f"PalmaresScaper: failed to fetch page 1: {exc}")
-            return []
+            return [], 0
 
         total_pages = self._detect_page_count(page1_html)
         entries = self._parse_page(page1_html)
@@ -122,7 +122,7 @@ class BoursoramaPalmaresScaper:
             except Exception as exc:
                 logger.warning(f"PalmaresScaper: page {page_num} failed, skipping: {exc}")
 
-        return entries
+        return entries, total_pages
 
     async def fetch_page(self, page: int) -> list[PalmaresEntry]:
         """Fetch and parse a single page (1-indexed)."""

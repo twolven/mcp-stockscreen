@@ -378,11 +378,12 @@ class TestFetchAll:
             return PAGE_1_HTML
 
         with patch.object(s, "_http_get", side_effect=get_page):
-            entries = await s.fetch_all()
+            entries, page_count = await s.fetch_all()
 
         # PAGE_1 a 2 lignes, PAGE_2 a 1 ligne, PAGE_3 (=PAGE_1 again) a 2 lignes
         # total = 2 + 1 + 2 = 5... mais le test doit être cohérent
         assert len(entries) > 0
+        assert page_count == 3
 
     async def test_fetch_all_scrapes_all_detected_pages(self):
         s = _make_scraper()
@@ -397,10 +398,12 @@ class TestFetchAll:
             return PAGE_1_HTML  # page 1 détecte 3 pages
 
         with patch.object(s, "_http_get", side_effect=get_page):
-            await s.fetch_all()
+            entries, page_count = await s.fetch_all()
 
         # Doit avoir appelé page 1 (détection), puis pages 2 et 3
         assert len(call_urls) == 3
+        assert page_count == 3
+        assert len(entries) > 0
 
     async def test_fetch_all_continues_on_page_error(self):
         """Une erreur sur une page ne stoppe pas l'ensemble."""
@@ -416,8 +419,9 @@ class TestFetchAll:
             return PAGE_1_HTML
 
         with patch.object(s, "_http_get", side_effect=get_page):
-            entries = await s.fetch_all()
+            entries, page_count = await s.fetch_all()
 
         # Doit retourner les entrées des pages qui ont réussi
         assert len(entries) > 0
         assert call_count[0] == 3
+        assert page_count == 3

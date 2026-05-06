@@ -33,7 +33,7 @@ def _snapshot(entries, fetched_at="2026-03-24T10:00:00", page_count=3) -> Palmar
     )
 
 
-def _make_service(tmp_path, ttl=3600.0, entries=None) -> tuple[PalmaresService, AsyncMock]:
+def _make_service(tmp_path, ttl=3600.0, entries=None, page_count=3) -> tuple[PalmaresService, AsyncMock]:
     scraper = AsyncMock()
     if entries is None:
         entries = [
@@ -41,7 +41,7 @@ def _make_service(tmp_path, ttl=3600.0, entries=None) -> tuple[PalmaresService, 
             _entry("1rPB", "Beta",  rendement_2025=5.0),
             _entry("1rPC", "Gamma", rendement_2025=3.0),
         ]
-    scraper.fetch_all = AsyncMock(return_value=entries)
+    scraper.fetch_all = AsyncMock(return_value=(entries, page_count))
     store = MagicMock(spec=PalmaresStore)
     store.load.return_value = None  # cache miss by default
     svc = PalmaresService(scraper=scraper, store=store, cache_ttl_seconds=ttl)
@@ -197,3 +197,9 @@ class TestSnapshotMetadata:
         result = await svc.get()
         assert result.fetched_at is not None
         assert "T" in result.fetched_at
+
+    async def test_page_count_propagated_to_saved_snapshot(self, tmp_path):
+        svc, _ = _make_service(tmp_path, page_count=5)
+        await svc.get()
+        saved_snapshot = svc._store.save.call_args[0][0]
+        assert saved_snapshot.page_count == 5

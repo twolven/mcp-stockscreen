@@ -6,7 +6,7 @@ import logging
 import os
 import time
 
-from stockscreen.exceptions import APIError, ValidationError
+from stockscreen.exceptions import ValidationError
 from stockscreen.providers.symbol_fetchers.base import BaseSymbolFetcher
 
 logger = logging.getLogger("stockscreen-server-v1")
@@ -33,6 +33,10 @@ class SymbolService:
         cache_dir: str,
         refresh_interval_hours: float = 24.0,
     ):
+        names = [f.name for f in fetchers]
+        if len(names) != len(set(names)):
+            dupes = {n for n in names if names.count(n) > 1}
+            raise ValidationError(f"Duplicate fetcher names: {dupes}")
         self._fetchers: dict[str, BaseSymbolFetcher] = {f.name: f for f in fetchers}
         self._cache_dir = cache_dir
         self._refresh_interval = refresh_interval_hours * 3600

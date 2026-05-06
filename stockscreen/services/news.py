@@ -47,7 +47,7 @@ class NewsService:
                             "summary": item.get("summary"),
                         }
 
-                        title_lower = news_item["title"].lower()
+                        title_lower = (news_item["title"] or "").lower()
                         if any(t in title_lower for t in _MANAGEMENT_KEYWORDS):
                             news_data["management_changes"].append(news_item)
                         elif any(t in title_lower for t in _KEY_EVENT_KEYWORDS):
@@ -144,7 +144,7 @@ class NewsService:
 
                 matching_news = []
                 for news in filtered_news:
-                    text = f"{news['title']} {news['summary']}".lower()
+                    text = f"{news['title'] or ''} {news['summary'] or ''}".lower()
 
                     if any(kw.lower() in text for kw in exclude_keywords):
                         continue

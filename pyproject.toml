@@ -1,8 +1,25 @@
 [project]
 name = "mcp-stockscreen"
 version = "2.1.0"
-description = "MCP server for stock screening with Yahoo Finance"
+description = "MCP server for stock screening — technical, fundamental, options, news screening, watchlists and dividend rankings"
+readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.10"
+authors = [
+    { name = "Benjamin Marchand", email = "cyberbobjr@yahoo.com" },
+]
+keywords = ["mcp", "stocks", "screening", "finance", "yahoo-finance", "boursorama", "euronext", "dividend"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
 dependencies = [
     "mcp>=1.6",
     "yfinance>=1.2.0",
@@ -13,6 +30,12 @@ dependencies = [
     "cssselect>=1.2",
     "requests>=2.31",
 ]
+
+[project.urls]
+Homepage = "https://github.com/cyberbobjr/mcp-stockscreen"
+Repository = "https://github.com/cyberbobjr/mcp-stockscreen"
+Issues = "https://github.com/cyberbobjr/mcp-stockscreen/issues"
+Original = "https://github.com/twolven/mcp-stockscreen"
 
 [project.scripts]
 stockscreen = "stockscreen.server:main"

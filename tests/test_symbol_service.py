@@ -67,6 +67,34 @@ class TestSymbolServiceInit:
         svc = SymbolService(fetchers=[], cache_dir=str(tmp_path))
         assert svc.available_categories() == []
 
+    def test_duplicate_fetcher_names_raise_validation_error(self, tmp_path):
+        class _DupFetcher1(BaseSymbolFetcher):
+            name = "dup"
+            source_url = "https://example.com/a"
+
+            async def fetch(self) -> list[SymbolRecord]:
+                return []
+
+        class _DupFetcher2(BaseSymbolFetcher):
+            name = "dup"
+            source_url = "https://example.com/b"
+
+            async def fetch(self) -> list[SymbolRecord]:
+                return []
+
+        with pytest.raises(ValidationError, match="Duplicate"):
+            SymbolService(
+                fetchers=[_DupFetcher1(), _DupFetcher2()],
+                cache_dir=str(tmp_path),
+            )
+
+    def test_non_duplicate_fetchers_still_work(self, tmp_path):
+        svc = SymbolService(
+            fetchers=[_FakeFetcher(), _AnotherFetcher()],
+            cache_dir=str(tmp_path),
+        )
+        assert set(svc.available_categories()) == {"fake", "other"}
+
 
 # ---------------------------------------------------------------------------
 # 2. get() — symbol resolution

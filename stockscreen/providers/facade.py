@@ -98,23 +98,28 @@ class MarketDataFacade:
 
     async def get_history(self, identifier: str, period: str = "1y") -> pd.DataFrame:
         """Get historical OHLCV — delegates to Yahoo."""
-        return await self._yahoo.get_history(identifier, period=period)
+        yahoo_ticker, _ = await self._resolve(identifier)
+        return await self._yahoo.get_history(yahoo_ticker, period=period)
 
     async def get_news(self, identifier: str) -> list[dict]:
         """Get recent news — delegates to Yahoo."""
-        return await self._yahoo.get_news(identifier)
+        yahoo_ticker, _ = await self._resolve(identifier)
+        return await self._yahoo.get_news(yahoo_ticker)
 
     async def get_option_chain(self, identifier: str, expiry: str) -> Any:
         """Get options chain — delegates to Yahoo."""
-        return await self._yahoo.get_option_chain(identifier, expiry)
+        yahoo_ticker, _ = await self._resolve(identifier)
+        return await self._yahoo.get_option_chain(yahoo_ticker, expiry)
 
     async def get_option_expirations(self, identifier: str) -> tuple:
         """Get option expiration dates — delegates to Yahoo."""
-        return await self._yahoo.get_option_expirations(identifier)
+        yahoo_ticker, _ = await self._resolve(identifier)
+        return await self._yahoo.get_option_expirations(yahoo_ticker)
 
     async def get_earnings_dates(self, identifier: str) -> dict:
         """Get earnings dates — delegates to Yahoo."""
-        return await self._yahoo.get_earnings_dates(identifier)
+        yahoo_ticker, _ = await self._resolve(identifier)
+        return await self._yahoo.get_earnings_dates(yahoo_ticker)
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -29,3 +29,4 @@ ENV/
 .mcp.json
 .claude/
 stockscreen/data/
+opencode.json

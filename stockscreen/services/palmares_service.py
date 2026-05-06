@@ -85,10 +85,10 @@ class PalmaresService:
         return await self._fetch_and_save()
 
     async def _fetch_and_save(self) -> PalmaresSnapshot:
-        entries = await self._scraper.fetch_all()
+        entries, page_count = await self._scraper.fetch_all()
         snapshot = PalmaresSnapshot(
             fetched_at=datetime.datetime.now().isoformat(),
-            page_count=0,
+            page_count=page_count,
             total_entries=len(entries),
             entries=entries,
         )
