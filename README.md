@@ -289,7 +289,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Author
 
-Todd Wolven - (https://github.com/twolven)
+[Todd Wolven](https://toddwolven.com/) - Lead AI Software Developer and open-source GenAI engineer
 
 ## Acknowledgments
 
