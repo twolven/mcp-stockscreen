@@ -40,6 +40,9 @@ def fundamental(
         "pe": "trailingPE",
         "dividend": "dividendYield",
         "revenue_growth": "revenueGrowth",
+        "profit_margin": "profitMargins",
+        "debt_to_equity": "debtToEquity",
+        "price_to_book": "priceToBook",
         "aum": "totalAssets",
         "expense_ratio": "annualReportExpenseRatio",
         "volume": "regularMarketVolume",
@@ -136,7 +139,11 @@ def technical(
 
 
 def options_metrics(
-    calls: pd.DataFrame, puts: pd.DataFrame, criteria: dict[str, Any], days_to_earnings: int | None
+    calls: pd.DataFrame,
+    puts: pd.DataFrame,
+    criteria: dict[str, Any],
+    days_to_earnings: int | None,
+    days_to_expiration: int | None,
 ) -> tuple[bool, list[str], dict[str, Any]]:
     combined = pd.concat([calls, puts], ignore_index=True)
     reasons: list[str] = []
@@ -169,8 +176,9 @@ def options_metrics(
         "put_call_ratio": ratio,
         "spread": avg_spread,
         "days_to_earnings": days_to_earnings,
+        "days": days_to_expiration,
     }
-    for key in ("iv", "option_volume", "put_call_ratio", "days_to_earnings"):
+    for key in ("iv", "option_volume", "put_call_ratio", "days_to_earnings", "days"):
         raw_value = values[key]
         _bound(MISSING if raw_value is None else float(raw_value), criteria, key, reasons)
     if "max_spread" in criteria and (

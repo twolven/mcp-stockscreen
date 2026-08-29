@@ -34,13 +34,20 @@ def test_fundamental_all_legacy_bounds_and_missing():
         "totalAssets": 2e9,
         "annualReportExpenseRatio": 0.002,
         "regularMarketVolume": 2e6,
+        "profitMargins": 0.2,
+        "debtToEquity": 0.5,
+        "priceToBook": 3.0,
     }
     criteria = {
         "min_market_cap": 1e9,
+        "max_market_cap": 10e9,
         "min_pe": 5,
         "max_pe": 20,
         "min_dividend": 0.03,
         "min_revenue_growth": 0.05,
+        "min_profit_margin": 0.1,
+        "max_debt_to_equity": 1.0,
+        "max_price_to_book": 5.0,
         "min_aum": 1e9,
         "max_expense_ratio": 0.01,
         "min_volume": 1e6,
@@ -60,6 +67,9 @@ def test_fundamental_failures_are_not_silent():
     assert not ok and len(reasons) == 2
     assert fundamental({"trailingPE": 20}, {"max_pe": 20})[0]
     assert not fundamental({"trailingPE": 20.0001}, {"max_pe": 20})[0]
+    assert fundamental({"trailingPE": 5}, {"min_pe": 5})[0]
+    assert not fundamental({"trailingPE": 4.9999}, {"min_pe": 5})[0]
+    assert not fundamental({"debtToEquity": 900}, {"max_debt_to_equity": 1.0})[0]
 
 
 def test_technical_all_legacy_criteria():
@@ -107,14 +117,21 @@ def test_options_all_legacy_criteria():
             "max_spread": 10,
             "min_days_to_earnings": 5,
             "max_days_to_earnings": 20,
+            "min_days": 10,
+            "max_days": 20,
         },
         10,
+        15,
     )
     assert ok and not reasons and values["option_volume"] == 450
     ok, reasons, _ = options_metrics(
-        calls, puts, {"min_iv": 90, "max_spread": 0.01, "max_days_to_earnings": 2}, 10
+        calls,
+        puts,
+        {"min_iv": 90, "max_spread": 0.01, "max_days_to_earnings": 2, "min_days": 20},
+        10,
+        15,
     )
-    assert not ok and len(reasons) == 3
+    assert not ok and len(reasons) == 4
 
 
 def test_news_keywords_exclusions_age_and_management():

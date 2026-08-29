@@ -60,10 +60,14 @@ TECHNICAL = COMMON | {
 }
 FUNDAMENTAL = COMMON | {
     "min_market_cap",
+    "max_market_cap",
     "min_pe",
     "max_pe",
     "min_dividend",
     "min_revenue_growth",
+    "min_profit_margin",
+    "max_debt_to_equity",
+    "max_price_to_book",
     "min_aum",
     "max_expense_ratio",
     "min_volume",
@@ -74,6 +78,8 @@ OPTIONS = COMMON | {
     "min_option_volume",
     "min_put_call_ratio",
     "max_spread",
+    "min_days",
+    "max_days",
     "min_days_to_earnings",
     "max_days_to_earnings",
 }

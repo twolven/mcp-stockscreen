@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -66,7 +66,8 @@ def evaluate(symbol, screen_type, criteria):
             return False, ["no option expirations"], {}
         chain = provider.chain(symbol, expirations[0], ticker)
         days = days_until_earnings(provider.calendar(symbol, ticker))
-        return options_metrics(chain.calls, chain.puts, criteria, days)
+        expiration_days = (date.fromisoformat(expirations[0]) - datetime.now(UTC).date()).days
+        return options_metrics(chain.calls, chain.puts, criteria, days, expiration_days)
     if screen_type == "news":
         articles = normalize_news(provider.news(symbol, ticker), int(criteria.get("max_days", 30)))
         return news_matches(articles, criteria)
