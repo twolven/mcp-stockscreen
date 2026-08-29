@@ -35,11 +35,15 @@ class Store:
         path = self._path(kind, name)
         if not path.exists():
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            raise ValueError(f"Stored {kind} '{name}' is unreadable") from exc
 
     def delete(self, kind, name):
         path = self._path(kind, name)
-        if not path.exists():
+        try:
+            path.unlink()
+        except FileNotFoundError:
             return False
-        path.unlink()
         return True

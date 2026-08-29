@@ -1,5 +1,5 @@
 name: CI
-on: [push, pull_request]
+on: [pull_request, workflow_dispatch]
 jobs:
   test:
     strategy:
@@ -10,7 +10,9 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with: {python-version: '${{ matrix.python }}'}
       - run: uv sync --locked
+      - run: uv lock --check
       - run: uv run ruff check .
-      - run: uv run mypy src
+      - run: uv run mypy .
       - run: uv run pytest
       - run: uv build
+      - run: uv run python scripts/verify_wheel.py

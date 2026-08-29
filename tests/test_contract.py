@@ -14,3 +14,21 @@ async def test_exact_public_tools():
         "manage_watchlist",
         "get_screening_result",
     }
+    screen = next(t for t in tools if t.name == "run_stock_screen")
+    assert screen.inputSchema["properties"]["screen_type"]["enum"] == [
+        "technical",
+        "fundamental",
+        "options",
+        "news",
+        "custom",
+    ]
+    action = next(t for t in tools if t.name == "manage_watchlist")
+    assert action.inputSchema["properties"]["action"]["enum"] == [
+        "create",
+        "update",
+        "delete",
+        "get",
+    ]
+    assert {"success", "timestamp", "data", "provider", "warnings"} <= set(
+        screen.outputSchema["properties"]
+    )
