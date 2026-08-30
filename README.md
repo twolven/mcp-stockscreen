@@ -29,6 +29,21 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 Connect a Streamable HTTP-capable MCP client to `http://127.0.0.1:8000/mcp`. The named `stockscreen-data` volume persists watchlists and saved results across container replacement. To avoid a port collision when running multiple servers, set `MCP_HOST_PORT` before starting Compose, for example `$env:MCP_HOST_PORT=8002`. Stop the container with `docker compose down`; add `--volumes` only when you intentionally want to delete the persisted data.
 
-The Compose mapping intentionally binds to localhost. The endpoint has no authentication or TLS and must not be exposed to an untrusted network without a properly configured reverse proxy and access control. Running `uv run python stockscreen.py` remains the stdio-compatible default outside Docker.
+The Compose mapping intentionally binds to localhost. The endpoint has no authentication or TLS and must not be exposed to an untrusted network without a properly configured reverse proxy and access control.
+
+Binding to loopback alone does not make the endpoint private: a browser can still reach it through DNS rebinding, so the server validates `Host` and `Origin` headers before a request reaches an MCP session. Requests carrying a foreign `Host` are answered with `421 Misdirected Request` and those carrying a foreign `Origin` with `403 Forbidden`, while same-origin loopback traffic and non-browser clients that send no `Origin` are unaffected.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MCP_TRANSPORT` | `stdio` | `stdio`, `http`, or `streamable-http`. |
+| `MCP_HOST` | `127.0.0.1` | Interface the HTTP server binds. |
+| `MCP_PORT` | `8000` | Port inside the container. |
+| `MCP_PATH` | `/mcp` | Streamable HTTP endpoint path. |
+| `MCP_HOST_PORT` | `8000` | Host port Compose publishes on `127.0.0.1`. |
+| `MCP_HOST_ORIGIN_PROTECTION` | `true` | `true`, `auto`, or `false`. Disable only behind a proxy that performs the same validation. |
+| `MCP_ALLOWED_HOSTS` | unset | Comma-separated extra hostnames permitted in `Host`. |
+| `MCP_ALLOWED_ORIGINS` | unset | Comma-separated extra browser origins permitted in `Origin`. |
+
+Put the reverse-proxy hostname in `MCP_ALLOWED_HOSTS` when fronting the container, otherwise the guard rejects the proxied `Host`. Running `uv run python stockscreen.py` remains the stdio-compatible default outside Docker.
 
 Run validation with `uv lock --check`, `uv run ruff check .`, `uv run mypy .`, `uv run pytest`, `uv build`, and `uv run python scripts/verify_wheel.py`. CI also builds the container and performs health plus MCP tool-discovery checks over Streamable HTTP. Domain/provider/persistence branch coverage is gated at 90%. Set `YFINANCE_LIVE=1` to opt into live shape smoke tests.
