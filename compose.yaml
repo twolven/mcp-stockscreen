@@ -1,0 +1,15 @@
+name: mcp-stockscreen
+services:
+  stockscreen:
+    build:
+      context: .
+    image: mcp-stockscreen:local
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${MCP_HOST_PORT:-8000}:8000"
+    volumes:
+      - stockscreen-data:/home/mcp/.stockscreen
+
+volumes:
+  stockscreen-data:

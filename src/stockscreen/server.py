@@ -1,7 +1,10 @@
+import os
 from datetime import UTC, date, datetime
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from .domain import days_until_earnings, fundamental, news_matches, options_metrics, technical
 from .models import (
@@ -20,6 +23,12 @@ from .provider import ProviderError, YahooProvider, clean, envelope, normalize_n
 mcp = FastMCP("stockscreen")
 provider = YahooProvider()
 store = Store()
+
+
+@mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
+async def health(_request: Request) -> JSONResponse:
+    """Report process health without invoking Yahoo Finance or persistence."""
+    return JSONResponse({"status": "ok", "service": "stockscreen"})
 
 
 def symbols_from(criteria, watchlist):
@@ -181,4 +190,16 @@ def get_screening_result(name: Name) -> ResponseEnvelope:
 
 
 def main():
-    mcp.run(transport="stdio", show_banner=False)
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    if transport == "stdio":
+        mcp.run(transport="stdio", show_banner=False)
+        return
+    if transport not in {"http", "streamable-http"}:
+        raise ValueError("MCP_TRANSPORT must be stdio, http, or streamable-http")
+    mcp.run(
+        transport="streamable-http",
+        host=os.getenv("MCP_HOST", "127.0.0.1"),
+        port=int(os.getenv("MCP_PORT", "8000")),
+        path=os.getenv("MCP_PATH", "/mcp"),
+        show_banner=False,
+    )
