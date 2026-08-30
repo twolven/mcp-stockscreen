@@ -1,0 +1,28 @@
+[project]
+name="mcp-stockscreen"
+version="2.0.0"
+requires-python=">=3.12,<3.15"
+dependencies=["fastmcp==3.4.7","mcp==1.29.1","yfinance==1.7.0","pandas==3.0.5","numpy==2.5.2","pydantic==2.13.5","starlette==1.6.0"]
+[dependency-groups]
+dev=[
+    "pytest>=8.3",
+    "pytest-cov>=6",
+    "ruff>=0.11",
+    "mypy>=1.15",
+    "pytest-asyncio>=1.4.0",
+]
+[build-system]
+requires=["hatchling"]
+build-backend="hatchling.build"
+[tool.hatch.build.targets.wheel]
+packages=["src/stockscreen"]
+[tool.pytest.ini_options]
+pythonpath=["src"]
+addopts="--cov=stockscreen.domain --cov=stockscreen.provider --cov=stockscreen.persistence --cov-branch --cov-report=term-missing --cov-fail-under=90"
+[tool.ruff]
+line-length=100
+[tool.ruff.lint]
+ignore=["FURB162"]
+[tool.mypy]
+ignore_missing_imports=true
+exclude="^stockscreen\\.py$"

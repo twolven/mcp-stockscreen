@@ -1,298 +1,49 @@
-# StockScreen MCP Server
+# StockScreen MCP
 
-A Model Context Protocol (MCP) server providing comprehensive stock screening capabilities through Yahoo Finance. Enables LLMs to screen stocks based on technical, fundamental, and options criteria, with support for watchlist management and result storage.
+A typed FastMCP server for Yahoo Finance-backed technical, fundamental, options, news, custom, and watchlist screening. It supports local stdio and containerized Streamable HTTP transports.
 
-## Features
+## Tools
 
-### Stock Screening
-- Technical Analysis Screening
-  - Price and volume filters
-  - Moving averages (20, 50, 200 SMA)
-  - RSI indicators
-  - Average True Range (ATR)
-  - Trend analysis (1d, 5d, 20d changes)
-  - MA distance calculations
+- `run_stock_screen(screen_type, criteria, watchlist=None, save_result=None)`
+- `get_stock_news(symbol, days_back=30)`
+- `manage_watchlist(action, name, symbols=None)`
+- `get_screening_result(name)`
 
-- Fundamental Screening
-  - Market capitalization filters
-  - P/E ratio analysis
-  - Dividend yield criteria
-  - Revenue growth metrics
-  - ETF-specific metrics (AUM, expense ratio)
+Legacy inputs and the five original screen categories are retained. Unknown criteria are rejected rather than silently ignored. Technical screens support the original price, volume, SMA-50/SMA-200, RSI, and ATR criteria. Fundamental screens include minimum/maximum market cap, P/E, dividend, revenue growth, profit margin, debt/equity, price/book, AUM, expense ratio, and volume. Options screens include IV, option volume, put/call ratio, spread, expiration-day, and earnings-day bounds. ETF, news, and nested custom criteria retain their original names. Explicit symbols or a watchlist are preferred. With neither, the server uses yfinance's documented `screen` query with `size=250`, US-region filters, category-aware EquityQuery/ETFQuery predicates, and assets/market-cap descending order. Universe metadata includes source, category, requested/returned size, sort, and as-of time. Missing requested metrics reject a symbol instead of becoming zero, and every rejected symbol retains reasons. Persistence names are restricted and normalized JSON writes are atomic under `~/.stockscreen`; no migration runs during import.
 
-- Options Screening
-  - Implied Volatility (IV) filters
-  - Options volume and open interest
-  - Put/Call ratio analysis
-  - Bid-ask spread evaluation
-  - Earnings date proximity checks
-
-### Data Management
-- Watchlist Creation and Management
-- Screening Result Storage
-- Default Symbol Categories
-  - Mega Cap (>$200B)
-  - Large Cap ($10B-$200B)
-  - Mid Cap ($2B-$10B)
-  - Small Cap ($300M-$2B)
-  - Micro Cap (<$300M)
-  - ETFs
-
-## Installation
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Clone the repository
-git clone https://github.com/twolven/mcp-stockscreen.git
-cd mcp-stockscreen
+```powershell
+uv sync --locked
+uv run python stockscreen.py
 ```
 
-## Usage
+The server uses stdio and emits no logs or migration messages to stdout. Yahoo Finance is an unofficial personal-use source and may be delayed, incomplete, rate-limited, or structurally changed. Results are not investment advice or guaranteed real-time data.
 
-1. Add to your Claude configuration:
-In your `claude-desktop-config.json`, add the following to the `mcpServers` section:
+## Docker / Streamable HTTP
 
-```json
-{
-    "mcpServers": {
-        "stockscreen": {
-            "command": "python",
-            "args": ["path/to/stockscreen.py"]
-        }
-    }
-}
+The container runs as an unprivileged user, installs the locked production dependencies, and serves MCP at `http://127.0.0.1:8000/mcp`. Start it with:
+
+```powershell
+docker compose up --build -d
+Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
-Replace "path/to/stockscreen.py" with the full path to where you saved the stockscreen.py file.
+Connect a Streamable HTTP-capable MCP client to `http://127.0.0.1:8000/mcp`. The named `stockscreen-data` volume persists watchlists and saved results across container replacement. To avoid a port collision when running multiple servers, set `MCP_HOST_PORT` before starting Compose, for example `$env:MCP_HOST_PORT=8002`. Stop the container with `docker compose down`; add `--volumes` only when you intentionally want to delete the persisted data.
 
-## Available Tools
+The Compose mapping intentionally binds to localhost. The endpoint has no authentication or TLS and must not be exposed to an untrusted network without a properly configured reverse proxy and access control.
 
-## Available Tools
+Binding to loopback alone does not make the endpoint private: a browser can still reach it through DNS rebinding, so the server validates `Host` and `Origin` headers before a request reaches an MCP session. Requests carrying a foreign `Host` are answered with `421 Misdirected Request` and those carrying a foreign `Origin` with `403 Forbidden`, while same-origin loopback traffic and non-browser clients that send no `Origin` are unaffected.
 
-1. `run_stock_screen`
-   
-### Technical Screen Criteria
-```python
-{
-    "screen_type": "technical",
-    "criteria": {
-        "min_price": float,              # Minimum stock price
-        "max_price": float,              # Maximum stock price
-        "min_volume": int,               # Minimum average volume
-        "above_sma_200": bool,           # Price above 200-day SMA
-        "above_sma_50": bool,            # Price above 50-day SMA
-        "min_rsi": float,                # Minimum RSI value
-        "max_rsi": float,                # Maximum RSI value
-        "max_atr_pct": float,            # Maximum ATR as percentage of price
-        "category": str                  # Optional: market cap category filter
-    },
-    "watchlist": str,                    # Optional: name of watchlist to screen
-    "save_result": str                   # Optional: name to save results
-}
-```
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MCP_TRANSPORT` | `stdio` | `stdio`, `http`, or `streamable-http`. |
+| `MCP_HOST` | `127.0.0.1` | Interface the HTTP server binds. |
+| `MCP_PORT` | `8000` | Port inside the container. |
+| `MCP_PATH` | `/mcp` | Streamable HTTP endpoint path. |
+| `MCP_HOST_PORT` | `8000` | Host port Compose publishes on `127.0.0.1`. |
+| `MCP_HOST_ORIGIN_PROTECTION` | `true` | `true`, `auto`, or `false`. Disable only behind a proxy that performs the same validation. |
+| `MCP_ALLOWED_HOSTS` | unset | Comma-separated extra hostnames permitted in `Host`. |
+| `MCP_ALLOWED_ORIGINS` | unset | Comma-separated extra browser origins permitted in `Origin`. |
 
-### Fundamental Screen Criteria
-```python
-{
-    "screen_type": "fundamental",
-    "criteria": {
-        "min_market_cap": float,         # Minimum market capitalization
-        "min_pe": float,                 # Minimum P/E ratio
-        "max_pe": float,                 # Maximum P/E ratio
-        "min_dividend": float,           # Minimum dividend yield (%)
-        "min_revenue_growth": float,     # Minimum revenue growth rate
-        "category": str,                 # Optional: market cap category filter
-        
-        # ETF-specific criteria
-        "min_aum": float,                # Minimum assets under management
-        "max_expense_ratio": float,      # Maximum expense ratio
-        "min_volume": float              # Minimum trading volume
-    },
-    "watchlist": str,                    # Optional: name of watchlist to screen
-    "save_result": str                   # Optional: name to save results
-}
-```
+Put the reverse-proxy hostname in `MCP_ALLOWED_HOSTS` when fronting the container, otherwise the guard rejects the proxied `Host`. Running `uv run python stockscreen.py` remains the stdio-compatible default outside Docker.
 
-### Options Screen Criteria
-```python
-{
-    "screen_type": "options",
-    "criteria": {
-        "min_iv": float,                 # Minimum implied volatility (%)
-        "max_iv": float,                 # Maximum implied volatility (%)
-        "min_option_volume": int,        # Minimum options volume
-        "min_put_call_ratio": float,     # Minimum put/call ratio
-        "max_spread": float,             # Maximum bid-ask spread (%)
-        "min_days_to_earnings": int,     # Minimum days until earnings
-        "max_days_to_earnings": int,     # Maximum days until earnings
-        "category": str                  # Optional: market cap category filter
-    },
-    "watchlist": str,                    # Optional: name of watchlist to screen
-    "save_result": str                   # Optional: name to save results
-}
-```
-
-### News Screen Criteria
-```python
-{
-    "screen_type": "news",
-    "criteria": {
-        "keywords": List[str],           # Keywords to search for in news
-        "exclude_keywords": List[str],    # Keywords to exclude from results
-        "min_days": int,                 # Minimum days back to search
-        "max_days": int,                 # Maximum days back to search
-        "management_changes": bool,       # Filter for management changes
-        "require_all_keywords": bool,     # Require all keywords to match
-        "category": str                  # Optional: market cap category filter
-    },
-    "watchlist": str,                    # Optional: name of watchlist to screen
-    "save_result": str                   # Optional: name to save results
-}
-
-```
-
-### Custom Screen Criteria
-```python
-{
-    "screen_type": "custom",
-    "criteria": {
-        "category": str,                 # Optional: market cap category filter
-        "technical": {
-            # Any technical criteria from above
-        },
-        "fundamental": {
-            # Any fundamental criteria from above
-        },
-        "options": {
-            # Any options criteria from above
-        },
-        "news": {
-            # Any news criteria from above
-        }
-    },
-    "watchlist": str,                    # Optional: name of watchlist to screen
-    "save_result": str                   # Optional: name to save results
-}
-```
-
-### Category Values
-Ava1ilable market cap categories for filtering:
-- "mega_cap": >$200B
-- "large_cap": $10B-$200B
-- "mid_cap": $2B-$10B
-- "small_cap": $300M-$2B
-- "micro_cap": <$300M
-- "etf": ETF instruments
-
-2. `manage_watchlist`
-```python
-{
-    "action": str,                       # Required: "create", "update", "delete", "get"
-    "name": str,                         # Required: watchlist name (1-50 chars, alphanumeric with _ -)
-    "symbols": List[str]                 # Required for create/update: list of stock symbols
-}
-```
-
-3. `get_screening_result`
-```python
-{
-    "name": str                          # Required: name of saved screening result
-}
-```
-
-## Response Formats
-
-### Technical Screen Response
-```python
-{
-    "screen_type": "technical",
-    "criteria": dict,                    # Original criteria used
-    "matches": int,                      # Number of matching stocks
-    "results": [                         # List of matching stocks
-        {
-            "symbol": str,
-            "price": float,
-            "volume": float,
-            "rsi": float,
-            "sma_20": float,
-            "sma_50": float,
-            "sma_200": float,
-            "atr": float,
-            "atr_pct": float,
-            "price_changes": {
-                "1d": float,             # 1-day price change %
-                "5d": float,             # 5-day price change %
-                "20d": float             # 20-day price change %
-            },
-            "ma_distances": {
-                "pct_from_20sma": float,
-                "pct_from_50sma": float,
-                "pct_from_200sma": float
-            }
-        }
-    ],
-    "rejected": [                        # List of stocks that didn't match
-        {
-            "symbol": str,
-            "rejection_reasons": List[str]
-        }
-    ],
-    "timestamp": str
-}
-```
-## Usage Prompt for Claude
-
-"I've enabled the stockscreen tools which provide stock screening capabilities. You can use three main functions:
-
-1. Screen stocks with various criteria types:
-   - Technical: Price, volume, RSI, moving averages, ATR
-   - Fundamental: Market cap, P/E, dividends, growth
-   - Options: IV, volume, earnings dates
-   - Custom: Combine multiple criteria types
-
-2. Manage watchlists:
-   - Create and update symbol lists
-   - Delete existing watchlists
-   - Retrieve watchlist contents
-
-3. Access saved screening results:
-   - Load previous screen results
-   - Review matched symbols and criteria
-
-All functions include error handling, detailed market data, and comprehensive responses."
-
-## Requirements
-
-- Python 3.12+
-- MCP Server
-- yfinance
-- pandas
-- numpy
-- asyncio
-
-## Limitations
-
-- Data sourced from Yahoo Finance with potential delays
-- Rate limits based on Yahoo Finance API restrictions
-- Options data availability depends on market hours
-- Some financial metrics may be delayed or unavailable
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Author
-
-[Todd Wolven](https://toddwolven.com/) - Lead AI Software Developer and open-source GenAI engineer
-
-## Acknowledgments
-
-- Built with the Model Context Protocol (MCP) by Anthropic
-- Data provided by [Yahoo Finance](https://finance.yahoo.com/)
-- Developed for use with Anthropic's Claude
+Run validation with `uv lock --check`, `uv run ruff check .`, `uv run mypy .`, `uv run pytest`, `uv build`, and `uv run python scripts/verify_wheel.py`. CI also builds the container and performs health plus MCP tool-discovery checks over Streamable HTTP. Domain/provider/persistence branch coverage is gated at 90%. Set `YFINANCE_LIVE=1` to opt into live shape smoke tests.
