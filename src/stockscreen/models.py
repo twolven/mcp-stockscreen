@@ -119,6 +119,12 @@ def validate_criteria(screen_type: str, criteria: dict[str, Any]) -> None:
             nested = criteria.get(category, {})
             if not isinstance(nested, dict):
                 raise TypeError(f"custom.{category} must be an object")
+            nested_common = set(nested) & COMMON
+            if nested_common:
+                raise ValueError(
+                    f"custom.{category} cannot set {', '.join(sorted(nested_common))}; "
+                    "put symbols and category at the top level of custom criteria"
+                )
             nested_unknown = set(nested) - ALLOWED[category]
             if nested_unknown:
                 raise ValueError(
