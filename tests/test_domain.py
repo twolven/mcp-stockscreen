@@ -167,3 +167,12 @@ def test_calendar_and_criteria_validation():
         validate_criteria("technical", {"category": "invalid"})
     with pytest.raises(TypeError):
         validate_criteria("custom", {"news": []})
+
+
+def test_custom_rejects_symbols_and_category_inside_sections():
+    # Only top-level symbols/category choose the universe; nested ones were accepted, then ignored.
+    validate_criteria("custom", {"symbols": ["AAPL"], "technical": {"min_rsi": 20}})
+    with pytest.raises(ValueError, match=r"custom\.technical cannot set symbols"):
+        validate_criteria("custom", {"technical": {"symbols": ["AAPL"], "min_rsi": 20}})
+    with pytest.raises(ValueError, match=r"custom\.fundamental cannot set category"):
+        validate_criteria("custom", {"fundamental": {"category": "etf"}})
